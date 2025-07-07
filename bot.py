@@ -32,3 +32,17 @@ def webhook():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+from telegram import Update
+from telegram.ext import CommandHandler, ApplicationBuilder, ContextTypes
+
+async def getid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    await update.message.reply_text(
+        f"Chat ID = `{chat.id}`",
+        parse_mode="Markdown"
+    )
+
+def main():
+    app = ApplicationBuilder().token("ВАШ_ТОКЕН").build()
+    app.add_handler(CommandHandler("getid", getid))
+    app.run_polling()
