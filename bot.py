@@ -1,19 +1,16 @@
 import os
-from aiogram import Bot, Dispatcher, types
+from telebot import TeleBot, types
 
-# Берём токен из переменных окружения
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
-    raise RuntimeError("Set BOT_TOKEN environment variable")
+    raise RuntimeError("Установите переменную окружения BOT_TOKEN")
 
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher(bot)
+bot = TeleBot(BOT_TOKEN, parse_mode="HTML")
 
-@dp.message_handler(commands=["start"])
-async def cmd_start(message: types.Message):
-    await message.answer("👋 Привет! Я бот TripleA.")
+@bot.message_handler(commands=["start"])
+def cmd_start(message: types.Message):
+    bot.reply_to(message, "👋 Привет! Я простой бот на telebot.")
 
-@dp.message_handler()
-async def echo_all(message: types.Message):
-    # просто эхо всех входящих текстов
-    await message.answer(f"Вы сказали: {message.text}")
+@bot.message_handler(func=lambda m: True)
+def echo_all(message: types.Message):
+    bot.reply_to(message, f"Вы написали: {message.text}")
