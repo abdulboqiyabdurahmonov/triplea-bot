@@ -1,4 +1,5 @@
-python-telegram-bot>=20.4
-uvicorn[standard]>=0.22.0
+# requirements.txt
 fastapi>=0.95.2
-# и любые другие ваши зависимости, без дублирования
+uvicorn[standard]>=0.22.0
+python-telegram-bot>=20.4
+gunicorn>=20.1.0
