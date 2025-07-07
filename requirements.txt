@@ -1,3 +1,4 @@
-Flask==2.3.3
-gunicorn==20.1.0
-pyTelegramBotAPI==4.12.0
+python-telegram-bot>=20.4
+uvicorn[standard]>=0.22.0
+fastapi>=0.95.2
+# и любые другие ваши зависимости, без дублирования
