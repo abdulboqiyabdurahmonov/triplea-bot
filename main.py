@@ -1,38 +1,38 @@
 import os
 from fastapi import FastAPI, Request, HTTPException
-from bot import bot, dp
-from aiogram.types import Update
+from bot import bot
 
 WEBHOOK_PATH = "/webhook"
-# полная публичная ссылка, например https://your-service.onrender.com/webhook
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # https://<ваше-имя-сервиса>.onrender.com/webhook
 if not WEBHOOK_URL:
-    raise RuntimeError("Set WEBHOOK_URL environment variable, e.g. https://xyz.onrender.com/webhook")
+    raise RuntimeError("Установите WEBHOOK_URL, например https://xyz.onrender.com/webhook")
 
-HOST = "0.0.0.0"
 PORT = int(os.getenv("PORT", 8000))
 
 app = FastAPI()
 
 @app.on_event("startup")
-async def on_startup():
-    # регистрируем webhook в Telegram
-    await bot.set_webhook(WEBHOOK_URL)
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    # снимаем webhook
-    await bot.delete_webhook()
-    await bot.session.close()
+def setup_webhook():
+    bot.remove_webhook()
+    bot.set_webhook(WEBHOOK_URL)
 
 @app.post(WEBHOOK_PATH)
-async def telegram_webhook(req: Request):
-    body = await req.json()
-    update = Update(**body)
-    # прокидываем апдейт в диспетчер
-    await dp.process_update(update)
+async def receive_update(req: Request):
+    data = await req.json()
+    try:
+        update = types.Update.de_json(data)
+    except Exception:
+        raise HTTPException(400, "Bad request")
+    bot.process_new_updates([update])
     return {"ok": True}
 
+@app.on_event("shutdown")
+def shutdown():
+    bot.remove_webhook()
+
+# для локального запуска (polling):
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host=HOST, port=PORT)
+    # polling вместо webhook:
+    bot.remove_webhook()
+    bot.infinity_polling()
+
