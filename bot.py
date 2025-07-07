@@ -1,44 +1,39 @@
 import os
 from flask import Flask, request
-from telegram import Update, Bot
-from telegram.ext import Dispatcher, CommandHandler, MessageHandler, filters
+from telegram import Bot, Update
+from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
 
-TOKEN = os.environ['BOT_TOKEN']  # передаём ваш токен через переменную окружения
+# 1) Читаем токен из переменных среды
+TOKEN = os.environ.get("BOT_TOKEN")
+if not TOKEN:
+    raise RuntimeError("BOT_TOKEN is not set")
 
 bot = Bot(token=TOKEN)
 app = Flask(__name__)
 
-# Настраиваем диспетчер, чтобы он разбирал обновления из Flask
-dispatcher = Dispatcher(bot, update_queue=None, workers=0, use_context=True)
+# 2) Создаём dispatcher — он разобьёт входящее Update на нужный handler
+dispatcher = Dispatcher(bot, None, use_context=True)
 
-# Обработчики команд
+# 3) Опишите команды
 def start(update: Update, context):
-    update.message.reply_text("Привет! Я работаю на python-telegram-bot.")
+    update.message.reply_text("Привет! Я бот на TripleA.")
 
 def echo(update: Update, context):
-    # просто эхо
-    text = update.message.text
-    update.message.reply_text(f"Вы написали: {text}")
+    update.message.reply_text(f"Вы сказали: {update.message.text}")
 
-# Регистрируем их
+# 4) Регистрируем наши обработчики
 dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, echo))
 
-
-# Точка входа для Telegram Webhook
+# 5) Точка входа для Telegram Webhook
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
+    data = request.get_json(force=True)
+    update = Update.de_json(data, bot)
     dispatcher.process_update(update)
-    return "OK", 200
+    return "OK"
 
-
-# Точка для проверки живости сервиса
-@app.route("/", methods=["GET"])
-def index():
-    return "Bot is alive!", 200
-
-
+# 6) Локальный запуск (не нужен на Render, но полезен для отладки)
 if __name__ == "__main__":
-    # Для локального теста
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
