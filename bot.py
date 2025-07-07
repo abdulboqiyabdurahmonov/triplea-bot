@@ -1,39 +1,34 @@
 import os
 from flask import Flask, request
-from telegram import Bot, Update
-from telegram.ext import Dispatcher, CommandHandler, MessageHandler, Filters
+import telebot
 
-# 1) Читаем токен из переменных среды
+# 1) Токен из окружения
 TOKEN = os.environ.get("BOT_TOKEN")
 if not TOKEN:
-    raise RuntimeError("BOT_TOKEN is not set")
+    raise RuntimeError("BOT_TOKEN не задан в переменных среды")
 
-bot = Bot(token=TOKEN)
+bot = telebot.TeleBot(TOKEN, threaded=False)
 app = Flask(__name__)
 
-# 2) Создаём dispatcher — он разобьёт входящее Update на нужный handler
-dispatcher = Dispatcher(bot, None, use_context=True)
+# 2) Хэндлер на команду /start
+@bot.message_handler(commands=["start"])
+def send_welcome(message):
+    bot.reply_to(message, "Привет! Я бот на TripleA.")
 
-# 3) Опишите команды
-def start(update: Update, context):
-    update.message.reply_text("Привет! Я бот на TripleA.")
+# 3) Эхо-хэндлер
+@bot.message_handler(func=lambda m: True)
+def echo_all(message):
+    bot.reply_to(message, f"Вы сказали: {message.text}")
 
-def echo(update: Update, context):
-    update.message.reply_text(f"Вы сказали: {update.message.text}")
-
-# 4) Регистрируем наши обработчики
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, echo))
-
-# 5) Точка входа для Telegram Webhook
+# 4) Вебхук-энпоинт
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json(force=True)
-    update = Update.de_json(data, bot)
-    dispatcher.process_update(update)
-    return "OK"
+    json_str = request.get_data(as_text=True)
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "OK", 200
 
-# 6) Локальный запуск (не нужен на Render, но полезен для отладки)
+# 5) Для локального запуска
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
