@@ -1,7 +1,6 @@
 aiogram==3.4.1
 aiohttp==3.9.4
-yarl==1.9.2
-multidict==5.2.0
-
+yarl==1.9.2         # версия, для которой есть бинарные колёса
+multidict==6.0.4    # колёса для Py3.13
 fastapi==0.100.0
 uvicorn[standard]==0.22.0
