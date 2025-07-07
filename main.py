@@ -35,4 +35,6 @@ if __name__ == "__main__":
     # polling вместо webhook:
     bot.remove_webhook()
     bot.infinity_polling()
+    
 
+    return {"ok": True}  # Telegram ждёт любой валидный JSON с status 200
