@@ -83,21 +83,30 @@ MESSAGES = {
 async def cmd_start(message: types.Message, state: FSMContext):
     kb = InlineKeyboardMarkup().row(
         InlineKeyboardButton('Русский 🇷🇺', callback_data='lang_ru'),
-        InlineKeyboardButton("O'zbekcha 🇺🇿", callback_data='lang_uz')
+        InlineKeyboardButton("O'zbekcha 🇺🇿", callback_data='lang_uz'),
     )
     await state.finish()
-    await bot.send_message(message.chat.id, MESSAGES['ru']['select_lang'], reply_markup=kb)
+    await bot.send_message(
+        chat_id=message.chat.id,
+        text=MESSAGES['ru']['select_lang'],
+        reply_markup=kb
+    )
     await Form.lang.set()
 
 # Обработка выбора языка
 @dp.callback_query_handler(lambda c: c.data in ['lang_ru','lang_uz'], state=Form.lang)
 async def process_lang(callback: types.CallbackQuery, state: FSMContext):
-    # Убираем кнопки
+    # убираем inline-кнопки
     await callback.message.edit_reply_markup(None)
-    lang = 'ru' if callback.data=='lang_ru' else 'uz'
-    # Сохраняем язык и время старта, сразу переходим к ФИО
+
+    lang = 'ru' if callback.data == 'lang_ru' else 'uz'
     await state.update_data(lang=lang, start_ts=datetime.utcnow().isoformat())
-    await bot.send_message(callback.message.chat.id, MESSAGES[lang]['ask_fio'], reply_markup=ReplyKeyboardRemove())
+    # сразу спрашиваем ФИО
+    await bot.send_message(
+        chat_id=callback.message.chat.id,
+        text=MESSAGES[lang]['ask_fio'],
+        reply_markup=ReplyKeyboardRemove()
+    )
     await Form.fio.set()
     await callback.answer()
 
