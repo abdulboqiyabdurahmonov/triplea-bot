@@ -1,4 +1,20 @@
+# Виртуальная среда и байт-код Python
 venv/
 __pycache__/
 *.py[cod]
+
+# Локальные env-файлы
 .env
+
+# Артефакты сборки/дистрибутивы
+build/
+dist/
+*.egg-info/
+
+# Логи
+*.log
+
+# IDE/системные файлы
+.vscode/
+.idea/
+.DS_Store
