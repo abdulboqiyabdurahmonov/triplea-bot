@@ -1,4 +1,3 @@
-fastapi>=0.95.2
-uvicorn[standard]>=0.22.0
-python-telegram-bot>=20.6
-gunicorn>=20.1.0
+fastapi
+aiogram
+uvicorn
