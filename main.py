@@ -97,6 +97,12 @@ async def telegram_webhook(request: Request):
     except Exception:
         logging.exception("Ошибка при обработке Update")
     return {"ok": True}
+    try:
+    worksheet.append_row(row)
+    logging.info("✅ Записали строку в Google Sheets")
+except Exception:
+    logging.exception("❌ Не удалось записать строку в Google Sheets")
+
 
 # Локальный запуск для отладки
 if __name__ == "__main__":
