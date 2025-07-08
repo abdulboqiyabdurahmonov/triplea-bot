@@ -119,18 +119,24 @@ async def cmd_start(message: types.Message, state: FSMContext):
 # Обработка выбора языка
 @dp.callback_query_handler(lambda c: c.data in ['lang_ru','lang_uz'], state=Form.lang)
 async def process_lang(callback: types.CallbackQuery, state: FSMContext):
-    # убираем inline-кнопки
+    # Убираем кнопки выбора языка
     await callback.message.edit_reply_markup(None)
 
+    # Определяем язык
     lang = 'ru' if callback.data == 'lang_ru' else 'uz'
+    # Сохраняем язык и метку времени
     await state.update_data(lang=lang, start_ts=datetime.utcnow().isoformat())
-    # сразу спрашиваем ФИО
+
+    # Спрашиваем ФИО
     await bot.send_message(
-        chat_id=callback.message.chat.id,
-        text=MESSAGES[lang]['ask_fio'],
+        callback.message.chat.id,
+        MESSAGES[lang]['ask_fio'],
         reply_markup=ReplyKeyboardRemove()
     )
+    # Переводим FSM в состояние ввода ФИО
     await Form.fio.set()
+
+    # Обязательно ответим Telegram, чтобы кнопка не «крутилось»
     await callback.answer()
 
 # /cancel
