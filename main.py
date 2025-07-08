@@ -1,11 +1,17 @@
+# упрощённо
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+import logging
+
+app = FastAPI()
 
 @app.exception_handler(Exception)
-async def all_exception_handler(request, exc):
-    # Запишем в лог полный traceback
+async def all_exception_handler(request: Request, exc: Exception):
     logging.exception(f"Unhandled exception: {exc}")
-    # Отвечаем Telegram «OK», чтобы он не делал повторных попыток
     return JSONResponse(status_code=200, content={"ok": True})
+
+# далее идёт остальной код: bot = Bot(...), dp=Dispatcher(...), хэндлеры и т.д.
+
 
 # Чтобы видеть полные стектрейсы в логах
 uvicorn_logger = logging.getLogger("uvicorn.error")
