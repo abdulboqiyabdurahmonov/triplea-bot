@@ -10,6 +10,10 @@ async def all_exception_handler(request: Request, exc: Exception):
     logging.exception(f"Unhandled exception: {exc}")
     return JSONResponse(status_code=200, content={"ok": True})
 
+@app.get("/stats")
+async def stats():
+    return {"status": "ok"}
+
 # далее идёт остальной код: bot = Bot(...), dp=Dispatcher(...), хэндлеры и т.д.
 
 
