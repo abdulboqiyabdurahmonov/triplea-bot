@@ -1,3 +1,10 @@
+import sentry_sdk        # или просто используйте стандартный логгер
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+
+# Чтобы видеть полные стектрейсы в логах
+uvicorn_logger = logging.getLogger("uvicorn.error")
+uvicorn_logger.setLevel(logging.DEBUG)
+
 import os
 import logging
 import json
