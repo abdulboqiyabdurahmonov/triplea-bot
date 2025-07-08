@@ -91,23 +91,22 @@ async def cmd_start(message: types.Message, state: FSMContext):
         InlineKeyboardButton("O'zbekcha 🇺🇿", callback_data='lang_uz')
     )
     await state.finish()
-    await dp.bot.send_message(
-        chat_id=message.chat.id,
-        text=MESSAGES['ru']['select_lang'],
-        reply_markup=kb
-    )
+    await bot.send_message(chat_id=message.chat.id, text=MESSAGES['ru']['select_lang'], reply_markup=kb)
     await Form.lang.set()
 
-# Обработка выбора языка
-@dp.callback_query_handler(lambda c: c.data in ['lang_ru','lang_uz'], state=Form.lang)
+# Обработка выбора языка (вне зависимости от состояния)
+@dp.callback_query_handler(lambda c: c.data in ['lang_ru','lang_uz'], state='*')
 async def process_lang(callback: types.CallbackQuery, state: FSMContext):
+    # удаляем inline-кнопки из предыдущего сообщения
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except:
+        pass
+
     lang = 'ru' if callback.data == 'lang_ru' else 'uz'
+    await state.finish()
     await state.update_data(lang=lang, start_ts=datetime.utcnow().isoformat())
-    await dp.bot.send_message(
-        chat_id=callback.message.chat.id,
-        text=MESSAGES[lang]['ask_fio'],
-        reply_markup=ReplyKeyboardRemove()
-    )
+    await bot.send_message(chat_id=callback.message.chat.id, text=MESSAGES[lang]['ask_fio'], reply_markup=ReplyKeyboardRemove())
     await Form.fio.set()
     await callback.answer()
 
@@ -117,7 +116,7 @@ async def process_cancel(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get('lang', 'ru')
     await state.finish()
-    await dp.bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['cancelled'])
+    await bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['cancelled'])
 
 # Обработка ФИО
 @dp.message_handler(state=Form.fio)
@@ -125,10 +124,10 @@ async def process_fio(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get('lang', 'ru')
     if not re.match(r'^[A-Za-zА-Яа-яЁё ]+$', message.text):
-        return await dp.bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['invalid_fio'])
+        return await bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['invalid_fio'])
     await state.update_data(fio=message.text)
     await Form.phone.set()
-    await dp.bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['ask_phone'])
+    await bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['ask_phone'])
 
 # Обработка телефона
 @dp.message_handler(state=Form.phone)
@@ -136,10 +135,10 @@ async def process_phone(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get('lang', 'ru')
     if not re.match(r'^\+?\d{7,15}$', message.text):
-        return await dp.bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['invalid_phone'])
+        return await bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['invalid_phone'])
     await state.update_data(phone=message.text)
     await Form.company.set()
-    await dp.bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['ask_company'])
+    await bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['ask_company'])
 
 # Обработка компании
 @dp.message_handler(state=Form.company)
@@ -153,15 +152,15 @@ async def process_company(message: types.Message, state: FSMContext):
         InlineKeyboardButton('Корпоратив', callback_data='tariff_Корпоратив')
     )
     await Form.tariff.set()
-    await dp.bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['ask_tariff'], reply_markup=kb)
+    await bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['ask_tariff'], reply_markup=kb)
 
 # Обработка тарифа и завершение
 @dp.callback_query_handler(lambda c: c.data.startswith('tariff_'), state=Form.tariff)
 async def process_tariff(callback: types.CallbackQuery, state: FSMContext):
-    data  = await state.get_data()
-    lang  = data.get('lang', 'ru')
-    tariff= callback.data.split('_',1)[1]
-    code  = uuid.uuid4().hex[:8].upper()
+    data   = await state.get_data()
+    lang   = data.get('lang', 'ru')
+    tariff = callback.data.split('_',1)[1]
+    code   = uuid.uuid4().hex[:8].upper()
     start_ts = data['start_ts']
     await state.update_data(tariff=tariff, code=code)
 
