@@ -1,3 +1,5 @@
 fastapi
 aiogram==2.25.1
 uvicorn
+gspread
+google-auth
