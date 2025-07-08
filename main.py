@@ -84,36 +84,35 @@ async def process_company(message: types.Message, state: FSMContext):
     kb.add("Старт", "Бизнес", "Корпоратив")
     await bot.send_message(chat_id=message.chat.id, text="Выберите тариф:", reply_markup=kb)
 
-# Обработка тарифа с описанием
+# Обработка тарифа и подтверждение заявки
 @dp.message_handler(state=Form.tariff)
 async def process_tariff(message: types.Message, state: FSMContext):
+    # Сохраняем выбор тарифа
     tariff = message.text
-    # Описание тарифов
-    descriptions = {
-        "Старт": "Тариф «Старт» — оптимальное решение для небольших команд, включает базовые возможности.",
-        "Бизнес": "Тариф «Бизнес» — расширенный функционал для развития вашего бизнеса: CRM-интеграция, аналитика.",
-        "Корпоратив": "Тариф «Корпоратив» — полный пакет услуг с приоритетной поддержкой и настройкой."
-    }
-    desc = descriptions.get(tariff)
-    if desc:
-        await bot.send_message(chat_id=message.chat.id, text=desc)
-    # Сохраняем выбор
     await state.update_data(tariff=tariff)
+
+    # Достаём все данные
     data = await state.get_data()
-    # Аналитика времени
+
+    # Аналитика времени заполнения
     start = datetime.fromisoformat(data['start_ts'])
     end = datetime.utcnow()
     duration = (end - start).total_seconds()
     stats['complete_count'] += 1
     stats['durations'].append(duration)
+
     # Запись в Google Sheets
-    row = [data['fio'], data['phone'], data['company'], data['tariff'], data['start_ts'], end.isoformat(), duration]
+    row = [
+        data['fio'], data['phone'], data['company'], data['tariff'],
+        data['start_ts'], end.isoformat(), duration
+    ]
     try:
         worksheet.append_row(row)
         logging.info("✅ Записали строку в Google Sheets")
     except Exception:
         logging.exception("❌ Не удалось записать строку в Google Sheets")
-    # Отправка заявки в группу
+
+    # Отправка заявки в Telegram-группу
     text = (
         f"📥 Новая заявка из Telegram-бота:\n"
         f"👤 ФИО: {data['fio']}\n"
@@ -122,6 +121,10 @@ async def process_tariff(message: types.Message, state: FSMContext):
         f"💳 Тариф: {data['tariff']}"
     )
     await bot.send_message(chat_id=int(GROUP_ID), text=text)
+
+    # Подтверждение пользователю
+    await bot.send_message(chat_id=message.chat.id, text="Ваша заявка принята! Мы скоро свяжемся с вами.")
+    await state.finish()
 
 # Endpoint для вебхука
 @app.post("/webhook")
@@ -145,3 +148,4 @@ async def get_stats():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=PORT)
+
