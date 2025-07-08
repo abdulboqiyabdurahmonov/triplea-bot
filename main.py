@@ -78,3 +78,22 @@ async def telegram_webhook(request: Request):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=PORT)
+from aiogram import Bot
+from aiogram.dispatcher.dispatcher import Dispatcher
+
+@app.post("/webhook")
+async def telegram_webhook(request: Request):
+    payload = await request.json()
+    update = types.Update(**payload)
+
+    # 👉 Принудительно выставляем текущий бот и диспетчер
+    Bot.set_current(bot)
+    Dispatcher.set_current(dp)
+
+    await dp.process_update(update)
+
+    # 👉 Сбрасываем, чтобы не засорять contextvars
+    Dispatcher.set_current(None)
+    Bot.set_current(None)
+
+    return {"ok": True}
