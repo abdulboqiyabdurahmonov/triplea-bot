@@ -161,6 +161,49 @@ async def get_stats():
     avg_time = sum(stats['durations']) / len(stats['durations']) if stats['durations'] else 0
     return {"start_count": total, "complete_count": done, "conversion_rate": conv, "avg_time_sec": avg_time}
 
+from fastapi import HTTPException, Header
+
+# Секретный ключ, чтобы никто чужой не постучался
+SITE_SECRET = os.getenv("SITE_WEBHOOK_SECRET")
+
+@app.post("/site-request")
+async def site_request(request: Request, x_site_secret: str = Header(...)):
+    # 0) Проверяем заголовок безопасности
+    if SITE_SECRET is None or x_site_secret != SITE_SECRET:
+        raise HTTPException(401, "Unauthorized")
+
+    # 1) Читаем JSON из тела
+    payload = await request.json()
+    # Ожидаем что-то вроде:
+    # { "fio":"Иванов Иван", "phone":"+71234567890", "company":"Acme", "tariff":"Бизнес" }
+    fio     = payload.get("fio")
+    phone   = payload.get("phone")
+    company = payload.get("company")
+    tariff  = payload.get("tariff")
+    if not all([fio, phone, company, tariff]):
+        raise HTTPException(400, "Missing fields")
+
+    # 2) Записываем в Google Sheets
+    now = datetime.utcnow().isoformat()
+    row = [fio, phone, company, tariff, now, "сайта"]
+    try:
+        worksheet.append_row(row)
+        logging.info("✅ Записали сайт-заявку в Google Sheets")
+    except Exception:
+        logging.exception("❌ Ошибка записи сайт-заявки")
+
+    # 3) Шлём в Telegram-группу
+    text = (
+        "📥 Новая заявка с сайта:\n"
+        f"👤 {fio}\n"
+        f"📞 {phone}\n"
+        f"🏢 {company}\n"
+        f"💳 {tariff}"
+    )
+    await bot.send_message(chat_id=int(GROUP_ID), text=text)
+
+    return {"ok": True}
+
 # Запуск для локальной отладки
 if __name__ == "__main__":
     import uvicorn
