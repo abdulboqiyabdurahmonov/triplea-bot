@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 
 # Переменные окружения
 BOT_TOKEN   = os.getenv("BOT_TOKEN")
-GROUP_ID    = os.getenv("GROUP_CHAT_ID")   # Должно совпадать с именем в Render
+GROUP_ID    = os.getenv("GROUP_CHAT_ID")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 PORT        = int(os.getenv("PORT", 8000))
 
@@ -21,13 +21,13 @@ if not BOT_TOKEN or not GROUP_ID or not WEBHOOK_URL:
     logging.error("Не заданы обязательные переменные окружения")
     exit(1)
 
-# Инициализация бота и диспетчера с FSM
+# Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 app = FastAPI()
 
-# Определение состояний
+# Определение FSM-состояний
 class Form(StatesGroup):
     fio     = State()
     phone   = State()
@@ -38,22 +38,22 @@ class Form(StatesGroup):
 @dp.message_handler(commands=["start"], state="*")
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.finish()
-    await state.set_state(Form.fio.state)  # задаём первую ступень FSM
-    await message.answer("Привет! Пожалуйста, введите ваше ФИО:")
+    await state.set_state(Form.fio.state)
+    await bot.send_message(chat_id=message.chat.id, text="Привет! Пожалуйста, введите ваше ФИО:")
 
 # Обработка ФИО
 @dp.message_handler(state=Form.fio)
 async def process_fio(message: types.Message, state: FSMContext):
     await state.update_data(fio=message.text)
     await state.set_state(Form.phone.state)
-    await message.answer("Введите номер телефона:")
+    await bot.send_message(chat_id=message.chat.id, text="Введите номер телефона:")
 
 # Обработка телефона
 @dp.message_handler(state=Form.phone)
 async def process_phone(message: types.Message, state: FSMContext):
     await state.update_data(phone=message.text)
     await state.set_state(Form.company.state)
-    await message.answer("Введите название вашей компании:")
+    await bot.send_message(chat_id=message.chat.id, text="Введите название вашей компании:")
 
 # Обработка компании
 @dp.message_handler(state=Form.company)
@@ -62,13 +62,14 @@ async def process_company(message: types.Message, state: FSMContext):
     await state.set_state(Form.tariff.state)
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     keyboard.add("Старт", "Бизнес", "Корпоратив")
-    await message.answer("Выберите тариф:", reply_markup=keyboard)
+    await bot.send_message(chat_id=message.chat.id, text="Выберите тариф:", reply_markup=keyboard)
 
-# Обработка тарифа и отправка в группу
+# Обработка тарифа и отправка заявки
 @dp.message_handler(state=Form.tariff)
 async def process_tariff(message: types.Message, state: FSMContext):
     await state.update_data(tariff=message.text)
     data = await state.get_data()
+    # Отправляем заявку в группу
     text = (
         f"📥 Новая заявка из Telegram-бота:\n"
         f"👤 ФИО: {data['fio']}\n"
@@ -77,10 +78,11 @@ async def process_tariff(message: types.Message, state: FSMContext):
         f"💳 Тариф: {data['tariff']}"
     )
     await bot.send_message(chat_id=int(GROUP_ID), text=text)
-    await message.answer("Спасибо, ваша заявка отправлена!", reply_markup=ReplyKeyboardRemove())
+    # Оповещаем пользователя
+    await bot.send_message(chat_id=message.chat.id, text="Спасибо, ваша заявка отправлена!", reply_markup=ReplyKeyboardRemove())
     await state.finish()
 
-# Endpoint для вебхука
+# Эндпоинт для вебхука
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
     try:
