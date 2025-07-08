@@ -8,11 +8,11 @@ from datetime import datetime
 import gspread
 from google.oauth2.service_account import Credentials
 from fastapi import FastAPI, Request
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, types
+from aiogram.dispatcher import Dispatcher, FSMContext
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -29,20 +29,25 @@ PORT                  = int(os.getenv("PORT", 8000))
 # Проверка обязательных переменных окружения
 required = [BOT_TOKEN, GROUP_ID, WEBHOOK_URL, GOOGLE_CREDS_JSON, GOOGLE_SHEET_ID, GOOGLE_WORKSHEET_NAME]
 if not all(required):
-    logging.error("Не заданы обязательные env vars: BOT_TOKEN, GROUP_CHAT_ID, WEBHOOK_URL, GOOGLE_CREDS_JSON, GOOGLE_SHEET_ID, GOOGLE_WORKSHEET_NAME")
+    logging.error(
+        "Не заданы обязательные env vars: BOT_TOKEN, GROUP_CHAT_ID, WEBHOOK_URL, GOOGLE_CREDS_JSON, GOOGLE_SHEET_ID, GOOGLE_WORKSHEET_NAME"
+    )
     exit(1)
 
-# Инициализация Google Sheets client
-creds_info = json.loads(GOOGLE_CREDS_JSON)
-credentials = Credentials.from_service_account_info(creds_info, scopes=["https://www.googleapis.com/auth/spreadsheets"])
-gc = gspread.Client(auth=credentials)
-worksheet = gc.open_by_key(GOOGLE_SHEET_ID).worksheet(GOOGLE_WORKSHEET_NAME)
+# Инициализация Google Sheets
+creds_info  = json.loads(GOOGLE_CREDS_JSON)
+credentials = Credentials.from_service_account_info(
+    creds_info,
+    scopes=["https://www.googleapis.com/auth/spreadsheets"]
+)
+gc         = gspread.Client(auth=credentials)
+worksheet  = gc.open_by_key(GOOGLE_SHEET_ID).worksheet(GOOGLE_WORKSHEET_NAME)
 
 # Инициализация бота и диспетчера
-bot = Bot(token=BOT_TOKEN)
+bot     = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
-dp = Dispatcher(bot, storage=storage)
-app = FastAPI()
+dp      = Dispatcher(bot, storage=storage)
+app     = FastAPI()
 
 # FSM-состояния
 class Form(StatesGroup):
@@ -52,7 +57,7 @@ class Form(StatesGroup):
     company = State()
     tariff  = State()
 
-# Сообщения для разных языков: Russian и Uzbek
+# Сообщения для разных языков
 MESSAGES = {
     'ru': {
         'select_lang': 'Выберите язык:',
@@ -86,7 +91,11 @@ async def cmd_start(message: types.Message, state: FSMContext):
         InlineKeyboardButton("O'zbekcha 🇺🇿", callback_data='lang_uz')
     )
     await state.finish()
-    await bot.send_message(chat_id=message.chat.id, text=MESSAGES['ru']['select_lang'], reply_markup=kb)
+    await dp.bot.send_message(
+        chat_id=message.chat.id,
+        text=MESSAGES['ru']['select_lang'],
+        reply_markup=kb
+    )
     await Form.lang.set()
 
 # Обработка выбора языка
@@ -94,7 +103,11 @@ async def cmd_start(message: types.Message, state: FSMContext):
 async def process_lang(callback: types.CallbackQuery, state: FSMContext):
     lang = 'ru' if callback.data == 'lang_ru' else 'uz'
     await state.update_data(lang=lang, start_ts=datetime.utcnow().isoformat())
-    await bot.send_message(chat_id=callback.message.chat.id, text=MESSAGES[lang]['ask_fio'])
+    await dp.bot.send_message(
+        chat_id=callback.message.chat.id,
+        text=MESSAGES[lang]['ask_fio'],
+        reply_markup=ReplyKeyboardRemove()
+    )
     await Form.fio.set()
     await callback.answer()
 
@@ -104,7 +117,7 @@ async def process_cancel(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get('lang', 'ru')
     await state.finish()
-    await bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['cancelled'])
+    await dp.bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['cancelled'])
 
 # Обработка ФИО
 @dp.message_handler(state=Form.fio)
@@ -112,10 +125,10 @@ async def process_fio(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get('lang', 'ru')
     if not re.match(r'^[A-Za-zА-Яа-яЁё ]+$', message.text):
-        return await bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['invalid_fio'])
+        return await dp.bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['invalid_fio'])
     await state.update_data(fio=message.text)
     await Form.phone.set()
-    await bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['ask_phone'])
+    await dp.bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['ask_phone'])
 
 # Обработка телефона
 @dp.message_handler(state=Form.phone)
@@ -123,10 +136,10 @@ async def process_phone(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get('lang', 'ru')
     if not re.match(r'^\+?\d{7,15}$', message.text):
-        return await bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['invalid_phone'])
+        return await dp.bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['invalid_phone'])
     await state.update_data(phone=message.text)
     await Form.company.set()
-    await bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['ask_company'])
+    await dp.bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['ask_company'])
 
 # Обработка компании
 @dp.message_handler(state=Form.company)
@@ -140,21 +153,21 @@ async def process_company(message: types.Message, state: FSMContext):
         InlineKeyboardButton('Корпоратив', callback_data='tariff_Корпоратив')
     )
     await Form.tariff.set()
-    await bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['ask_tariff'], reply_markup=kb)
+    await dp.bot.send_message(chat_id=message.chat.id, text=MESSAGES[lang]['ask_tariff'], reply_markup=kb)
 
 # Обработка тарифа и завершение
 @dp.callback_query_handler(lambda c: c.data.startswith('tariff_'), state=Form.tariff)
 async def process_tariff(callback: types.CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    lang = data.get('lang', 'ru')
-    tariff = callback.data.split('_', 1)[1]
-    code = uuid.uuid4().hex[:8].upper()
+    data  = await state.get_data()
+    lang  = data.get('lang', 'ru')
+    tariff= callback.data.split('_',1)[1]
+    code  = uuid.uuid4().hex[:8].upper()
     start_ts = data['start_ts']
     await state.update_data(tariff=tariff, code=code)
 
     # Аналитика времени
     start = datetime.fromisoformat(start_ts)
-    end = datetime.utcnow()
+    end   = datetime.utcnow()
     duration = (end - start).total_seconds()
 
     # Запись в Google Sheets
@@ -180,7 +193,7 @@ async def process_tariff(callback: types.CallbackQuery, state: FSMContext):
     await bot.send_message(
         chat_id=callback.message.chat.id,
         text=MESSAGES[lang]['thank_you'].format(code=code),
-        reply_markup=types.ReplyKeyboardRemove()
+        reply_markup=ReplyKeyboardRemove()
     )
     await state.finish()
     await callback.answer()
@@ -194,21 +207,19 @@ async def process_status(message: types.Message):
     code = parts[1].strip().upper()
     records = worksheet.get_all_records()
     for r in records:
-        if str(r.get('Code', '')).upper() == code:
-            return await message.reply(
-                "Ваша заявка принята и в обработке."
-            )
+        if str(r.get('Code','')).upper() == code:
+            return await message.reply("Ваша заявка принята и в обработке.")
     await message.reply(f"Заявка с кодом {code} не найдена.")
 
 # Endpoint для вебхука
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
     payload = await request.json()
-    update = types.Update(**payload)
+    update  = types.Update(**payload)
     await dp.process_update(update)
     return {"ok": True}
 
-# Запуск локально
+# Запуск
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=PORT)
