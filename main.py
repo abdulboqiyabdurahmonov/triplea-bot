@@ -3,9 +3,7 @@
 import os
 import logging
 import time
-
 import gspread
-import json
 from oauth2client.service_account import ServiceAccountCredentials
 
 from aiogram import Bot, Dispatcher, types
@@ -39,6 +37,31 @@ def get_sheet():
 bot = Bot(token=API_TOKEN)
 dp  = Dispatcher(bot, storage=MemoryStorage())
 
+# Тексты для каждой локали
+prompts = {
+    'Русский': {
+        'invalid_lang':    "Нужно выбрать кнопкой: Русский или Узбекский.",
+        'ask_name':        "Введите ваше ФИО:",
+        'ask_phone':       "Введите номер телефона:",
+        'ask_company':     "Введите название компании:",
+        'ask_tariff':      "Выберите тариф:",
+        'invalid_tariff':  "Нужно выбрать один из трёх тарифов кнопками.",
+        'thank_you':       "Спасибо! Ваша заявка отправлена.",
+        'sheet_error':     "⚠️ Не удалось сохранить заявку в таблицу, но в группу она отправлена.",
+        'fallback':        "Чтобы начать, введите команду /start"
+    },
+    'Узбекский': {
+        'invalid_lang':    "Iltimos, tugmalardan foydalanib tanlang: Ruscha yoki O'zbekcha.",
+        'ask_name':        "Iltimos, ismingiz va familiyangizni kiriting:",
+        'ask_phone':       "Iltimos, telefon raqamingizni kiriting:",
+        'ask_company':     "Iltimos, kompaniya nomini kiriting:",
+        'ask_tariff':      "Iltimos, tarifni tanlang:",
+        'invalid_tariff':  "Iltimos, quydagi tariflardan birini tanlang tugmalar orqali.",
+        'thank_you':       "Rahmat! Murojaatingiz yuborildi.",
+        'sheet_error':     "⚠️ Arizani jadvalga saqlashda muammo yuz berdi, lekin guruhga yuborildi.",
+        'fallback':        "/start buyrug'ini kiriting, iltimos."
+    }
+}
 
 class Form(StatesGroup):
     lang    = State()
@@ -47,58 +70,61 @@ class Form(StatesGroup):
     company = State()
     tariff  = State()
 
-
 @dp.message_handler(commands=['start'], state='*')
 async def cmd_start(message: types.Message, state: FSMContext):
-    # Начинаем заново
     await state.finish()
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    # Теперь выбор: Русский и Узбекский
     kb.add("Русский", "Узбекский")
     await Form.lang.set()
     await message.answer("Пожалуйста, выберите язык:", reply_markup=kb)
 
-
 @dp.message_handler(state=Form.lang)
 async def process_lang(message: types.Message, state: FSMContext):
-    # Принимаем только Русский и Узбекский
-    if message.text not in ["Русский", "Узбекский"]:
-        return await message.answer("Нужно выбрать кнопкой: Русский или Узбекский.")
-    await state.update_data(lang=message.text)
+    choice = message.text
+    if choice not in prompts:
+        return await message.answer(prompts['Русский']['invalid_lang'])
+    await state.update_data(lang=choice)
     await Form.name.set()
-    await message.answer("Введите ваше ФИО:", reply_markup=types.ReplyKeyboardRemove())
-
+    await message.answer(prompts[choice]['ask_name'], reply_markup=types.ReplyKeyboardRemove())
 
 @dp.message_handler(state=Form.name)
 async def process_name(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data['lang']
     await state.update_data(name=message.text.strip())
     await Form.phone.set()
-    await message.answer("Введите номер телефона:")
-
+    await message.answer(prompts[lang]['ask_phone'])
 
 @dp.message_handler(state=Form.phone)
 async def process_phone(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data['lang']
     await state.update_data(phone=message.text.strip())
     await Form.company.set()
-    await message.answer("Введите название компании:")
-
+    await message.answer(prompts[lang]['ask_company'])
 
 @dp.message_handler(state=Form.company)
 async def process_company(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data['lang']
     await state.update_data(company=message.text.strip())
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    # Используем одни и те же названия тарифов
     kb.add("Старт", "Бизнес", "Корпоратив")
     await Form.tariff.set()
-    await message.answer("Выберите тариф:", reply_markup=kb)
-
+    await message.answer(prompts[lang]['ask_tariff'], reply_markup=kb)
 
 @dp.message_handler(state=Form.tariff)
 async def process_tariff(message: types.Message, state: FSMContext):
-    if message.text not in ["Старт", "Бизнес", "Корпоратив"]:
-        return await message.answer("Нужно выбрать один из трёх тарифов кнопками.")
-    await state.update_data(tariff=message.text)
     data = await state.get_data()
+    lang = data['lang']
+    valid = ["Старт", "Бизнес", "Корпоратив"]
+    if message.text not in valid:
+        return await message.answer(prompts[lang]['invalid_tariff'])
+    await state.update_data(tariff=message.text)
 
+    # Собираем текст заявки
+    data = await state.get_data()
     text = (
         f"📥 Новая заявка!\n\n"
         f"🌐 Язык: {data['lang']}\n"
@@ -111,7 +137,7 @@ async def process_tariff(message: types.Message, state: FSMContext):
     # Отправляем в Telegram-группу
     await bot.send_message(GROUP_CHAT_ID, text)
 
-    # Пытаемся записать в Google Sheets
+    # Пишем в Google Sheets
     try:
         sheet = get_sheet()
         sheet.append_row([
@@ -121,45 +147,40 @@ async def process_tariff(message: types.Message, state: FSMContext):
             data['company'],
             data['tariff']
         ])
-        logging.info("Заявка успешно добавлена в Google Sheets")
     except Exception as e:
         logging.error(f"Ошибка при записи в Google Sheets: {e}")
+        await message.answer(prompts[lang]['sheet_error'])
+    else:
+        await message.answer(prompts[lang]['thank_you'])
 
-    await message.answer("Спасибо! Ваша заявка отправлена.")
     await state.finish()
 
-
 @dp.message_handler(lambda msg: msg.text and not msg.text.startswith('/'), state='*')
-async def fallback(message: types.Message):
-    await message.answer("Чтобы начать, введите команду /start")
-
+async def fallback(message: types.Message, state: FSMContext):
+    # Попытаемся понять язык из состояния, иначе русский
+    data = await state.get_data()
+    lang = data.get('lang', 'Русский')
+    await message.answer(prompts.get(lang, prompts['Русский'])['fallback'])
 
 @dp.errors_handler(exception=TerminatedByOtherGetUpdates)
 async def ignore_conflict(update, exception):
-    # Игнорируем конфликт polling’ов
-    logging.warning("Игнорируем TerminatedByOtherGetUpdates – продолжим polling")
+    logging.warning("Игнорирую TerminatedByOtherGetUpdates")
     return True
 
-
 async def on_startup(dp: Dispatcher):
-    # Отключаем вебхук и сбрасываем накопившиеся обновления
+    # Отключаем вебхук и сбрасываем накопившиеся апдейты
     await bot.delete_webhook(drop_pending_updates=True)
-    logging.info("Webhook удалён, готов к polling-режиму")
-
+    logging.info("Webhook удалён, готов к polling")
 
 def run():
-    # Цикл перезапуска polling при конфликтах
+    # Перезапуск polling при конфликте
     while True:
         try:
             executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
             break
         except TerminatedByOtherGetUpdates:
-            logging.warning("Второй polling обнаружен, перезапуск через 5с")
+            logging.warning("Конфликт polling, перезапуск через 5 сек")
             time.sleep(5)
-        except Exception:
-            logging.exception("Неожиданная ошибка, выхожу")
-            break
-
 
 if __name__ == '__main__':
     run()
