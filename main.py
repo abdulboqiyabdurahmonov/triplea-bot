@@ -78,50 +78,61 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await Form.lang.set()
     await message.answer("Пожалуйста, выберите язык:", reply_markup=kb)
 
-@dp.message_handler(state=Form.lang)
-async def process_lang(message: types.Message, state: FSMContext):
-    choice = message.text
-    if choice not in prompts:
-        return await message.answer(prompts['Русский']['invalid_lang'])
-    await state.update_data(lang=choice)
-    await Form.name.set()
-    await message.answer(prompts[choice]['ask_name'], reply_markup=types.ReplyKeyboardRemove())
-
-@dp.message_handler(state=Form.name)
-async def process_name(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data['lang']
-    await state.update_data(name=message.text.strip())
-    await Form.phone.set()
-    await message.answer(prompts[lang]['ask_phone'])
-
-@dp.message_handler(state=Form.phone)
-async def process_phone(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data['lang']
-    await state.update_data(phone=message.text.strip())
-    await Form.company.set()
-    await message.answer(prompts[lang]['ask_company'])
-
+# ── В месте, где вы строите клавиатуру тарифов ──
 @dp.message_handler(state=Form.company)
 async def process_company(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data['lang']
     await state.update_data(company=message.text.strip())
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    # Используем одни и те же названия тарифов
+    # Сначала кнопка «Назад»…
+    kb.add("Назад")
+    # …потом тарифы
     kb.add("Старт", "Бизнес", "Корпоратив")
     await Form.tariff.set()
-    await message.answer(prompts[lang]['ask_tariff'], reply_markup=kb)
+    await message.answer(prompts[await state.get_data()]['ask_tariff'], reply_markup=kb)
 
-@dp.message_handler(state=Form.tariff)
-async def process_tariff(message: types.Message, state: FSMContext):
+
+# ── Снизу, после всех ваших @dp.message_handler-ов, добавляем обработчики Назад ──
+
+# 1) Назад с этапа выбора тарифа на выбор компании
+@dp.message_handler(lambda m: m.text == "Назад", state=Form.tariff)
+async def back_to_company(message: types.Message, state: FSMContext):
+    await Form.company.set()
     data = await state.get_data()
-    lang = data['lang']
-    valid = ["Старт", "Бизнес", "Корпоратив"]
-    if message.text not in valid:
-        return await message.answer(prompts[lang]['invalid_tariff'])
-    await state.update_data(tariff=message.text)
+    await message.answer(prompts[data['lang']]['ask_company'],
+                         reply_markup=types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+                                      .add("Назад")
+                                      .add("Старт", "Бизнес", "Корпоратив"))
+
+# 2) Назад с этапа компании на этап ввода телефона
+@dp.message_handler(lambda m: m.text == "Назад", state=Form.company)
+async def back_to_phone(message: types.Message, state: FSMContext):
+    await Form.phone.set()
+    data = await state.get_data()
+    await message.answer(prompts[data['lang']]['ask_phone'],
+                         reply_markup=types.ReplyKeyboardRemove()
+
+# 3) Назад с телефона на ввод ФИО
+@dp.message_handler(lambda m: m.text == "Назад", state=Form.phone)
+async def back_to_name(message: types.Message, state: FSMContext):
+    await Form.name.set()
+    data = await state.get_data()
+    await message.answer(prompts[data['lang']]['ask_name'],
+                         reply_markup=types.ReplyKeyboardRemove())
+
+# 4) Назад с ФИО на выбор языка
+@dp.message_handler(lambda m: m.text == "Назад", state=Form.name)
+async def back_to_lang(message: types.Message, state: FSMContext):
+    await Form.lang.set()
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+    kb.add("Русский", "Узбекский")
+    await message.answer("Пожалуйста, выберите язык:", reply_markup=kb)
+
+# (Опционально) Если пользователь совсем хочет отменить FSM:
+@dp.message_handler(lambda m: m.text == "Отмена", state='*')
+async def cancel_all(message: types.Message, state: FSMContext):
+    await state.finish()
+    await message.answer("ОК, отменено. /start чтобы начать заново.", reply_markup=types.ReplyKeyboardRemove())
+
 
     # Собираем текст заявки
     data = await state.get_data()
