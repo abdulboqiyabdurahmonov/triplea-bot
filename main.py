@@ -155,26 +155,24 @@ async def process_tariff(message: types.Message, state: FSMContext):
 
     await state.finish()
 
-@dp.message_handler(lambda msg: msg.text and not msg.text.startswith('/'), state='*')
-async def fallback(message: types.Message, state: FSMContext):
-    # Попытаемся понять язык из состояния, иначе русский
-    data = await state.get_data()
-    lang = data.get('lang', 'Русский')
-    await message.answer(prompts.get(lang, prompts['Русский'])['fallback'])
+# ── в конце вашего файла, заменяем старый fallback этим:
 
-@dp.errors_handler(exception=TerminatedByOtherGetUpdates)
-async def ignore_conflict(update, exception):
-    logging.warning("Игнорирую TerminatedByOtherGetUpdates")
-    return True
+@dp.message_handler(
+    lambda msg: msg.text and not msg.text.startswith('/'),
+    state=None              # <— ловим только если нет активного state
+)
+async def fallback(message: types.Message):
+    # если FSM уже окончена, но юзер пишет что-то не по команде — подсказываем ему /start
+    await message.answer("Чтобы начать, введите команду /start")
 
+# ── ниже ваш on_startup и запуск polling без изменений ──
 async def on_startup(dp: Dispatcher):
-    # Отключаем вебхук и сбрасываем накопившиеся апдейты
     await bot.delete_webhook(drop_pending_updates=True)
     logging.info("Webhook удалён, готов к polling")
 
-def run():
-    # Перезапуск polling при конфликте
-    while True:
+if __name__ == '__main__':
+    executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
+
         try:
             executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
             break
