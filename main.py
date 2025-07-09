@@ -31,7 +31,6 @@ scope = [
 creds = ServiceAccountCredentials.from_json_keyfile_name(CREDS_FILE, scope)
 gc    = gspread.authorize(creds)
 
-# Функция для доступа к таблице
 def get_sheet():
     return gc.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME)
 
@@ -104,10 +103,8 @@ async def process_tariff(message: types.Message, state: FSMContext):
         f"💼 Тариф: {data['tariff']}"
     )
 
-    # Отправляем в Telegram-группу
     await bot.send_message(GROUP_CHAT_ID, text)
 
-    # Записываем в Google Sheets
     sheet = get_sheet()
     sheet.append_row([
         data['lang'],
@@ -121,11 +118,20 @@ async def process_tariff(message: types.Message, state: FSMContext):
     await state.finish()
 
 
-# теперь fallback ловит только тексты без префикса '/'
 @dp.message_handler(lambda message: message.text and not message.text.startswith('/'), state='*')
 async def fallback(message: types.Message):
     await message.answer("Чтобы начать, введите команду /start")
 
 
+async def on_startup(dp: Dispatcher):
+    # Удаляем любой установленный вебхук и сбрасываем ожидающие обновления
+    await bot.delete_webhook(drop_pending_updates=True)
+    logging.info("Webhook deleted, ready to poll")
+
+
 if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True)
+    executor.start_polling(
+        dp,
+        skip_updates=True,
+        on_startup=on_startup
+    )
