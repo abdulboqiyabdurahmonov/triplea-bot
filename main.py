@@ -15,6 +15,13 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.utils import executor
 from aiogram.utils.exceptions import TerminatedByOtherGetUpdates
 
+@dp.errors_handler(exception=TerminatedByOtherGetUpdates)
+async def ignore_conflict(update, exception):
+    # просто логируем и дальше продолжаем
+    logging.warning("Ignored TerminatedByOtherGetUpdates – второй poll-проснулся")
+    return True
+
+
 # ——— Параметры ———
 API_TOKEN       = os.getenv('BOT_TOKEN')
 GROUP_CHAT_ID   = int(os.getenv('GROUP_CHAT_ID'))
