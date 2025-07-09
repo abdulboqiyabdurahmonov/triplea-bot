@@ -5,19 +5,19 @@ from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 
-# Получаем из окружения
+# Получаем переменные окружения
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-GROUP_ID = int(os.getenv("GROUP_ID", 0))  # -1002344973979
+GROUP_ID = int(os.getenv("GROUP_ID", 0))  # Например: -1002344973979
 WEBHOOK_PATH = os.getenv("WEBHOOK_PATH", "/webhook")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")  # https://your.domain
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")  # Например: https://your.domain
 
-# Инициализация бота и диспетчера с хранением состояний
+# Инициализация бота, хранилища и диспетчера
 bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 app = FastAPI()
 
-# Определяем состояния
+# Определяем состояния FSM
 class Form(StatesGroup):
     lang = State()
     name = State()
@@ -39,15 +39,16 @@ tariff_kb.add(
 )
 
 @dp.message_handler(commands=["start"])
-async def cmd_start(message: types.Message):
-    """Начало диалога — выбираем язык"""
-    await Form.lang.set()
+async def cmd_start(message: types.Message, state: FSMContext):
+    """Старт: выбираем язык"""
+    await state.set_state(Form.lang)
     await message.answer("Пожалуйста, выберите язык / Iltimos tilni tanlang:", reply_markup=lang_kb)
 
 @dp.callback_query_handler(lambda c: c.data in ["ru", "uz"], state=Form.lang)
 async def process_lang(call: types.CallbackQuery, state: FSMContext):
     lang = call.data
     await state.update_data(lang=lang)
+    # Переходим к следующему шагу: ФИО
     await state.set_state(Form.name)
     prompt = "Введите ваше ФИО:" if lang == "ru" else "Ismingizni kiriting:"
     await call.message.answer(prompt)
@@ -75,7 +76,7 @@ async def process_company(message: types.Message, state: FSMContext):
 async def process_tariff(call: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     tariff = call.data
-    # Собираем сообщение для группы
+    # Формируем сообщение для группы
     text = (
         f"📥 <b>Новая заявка</b>\n\n"
         f"👤 <b>Имя:</b> {data.get('name')}\n"
@@ -83,7 +84,6 @@ async def process_tariff(call: types.CallbackQuery, state: FSMContext):
         f"🏢 <b>Компания:</b> {data.get('company')}\n"
         f"💼 <b>Тариф:</b> {tariff}"
     )
-    # Отправляем в группу
     await bot.send_message(GROUP_ID, text)
     # Благодарим пользователя
     thank = "Спасибо! Ваша заявка отправлена." if data.get('lang') == "ru" else "Rahmat! Arizangiz qabul qilindi."
@@ -96,7 +96,7 @@ async def cmd_cancel(message: types.Message, state: FSMContext):
     await state.finish()
     await message.reply("Действие отменено.")
 
-# Вебхук эндпоинт для FastAPI
+# Webhook endpoint
 @app.post(WEBHOOK_PATH)
 async def telegram_webhook(request: Request):
     payload = await request.json()
@@ -104,7 +104,6 @@ async def telegram_webhook(request: Request):
     await dp.process_update(update)
     return {"ok": True}
 
-# Хуки запуска и останова
 @app.on_event("startup")
 async def on_startup():
     await bot.set_webhook(f"{WEBHOOK_URL}{WEBHOOK_PATH}")
@@ -115,7 +114,6 @@ async def on_shutdown():
     await storage.close()
     await storage.wait_closed()
 
-# Локальный запуск по умолчанию (для разработки)
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))
