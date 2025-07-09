@@ -137,7 +137,7 @@ async def process_tariff(message: types.Message, state: FSMContext):
     # Отправляем в Telegram-группу
     await bot.send_message(GROUP_CHAT_ID, text)
 
-    # Пишем в Google Sheets
+    # Запись в Google Sheets — попробуем и в случае ошибки сообщим
     try:
         sheet = get_sheet()
         sheet.append_row([
