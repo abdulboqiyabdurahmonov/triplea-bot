@@ -1,23 +1,43 @@
 import os
+import json
 from fastapi import FastAPI, Request
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 from aiogram import Bot, Dispatcher, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
 
-# Получаем переменные окружения
+# Загрузка конфигурации из переменных окружения
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-GROUP_ID = int(os.getenv("GROUP_ID", 0))  # Например: -1002344973979
+GROUP_ID = int(os.getenv("GROUP_ID", 0))  # ID Telegram-группы для заявок
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")  # Домен с https://
 WEBHOOK_PATH = os.getenv("WEBHOOK_PATH", "/webhook")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")  # Например: https://your.domain
+# Настройки Google Sheets
+GSHEET_CREDENTIALS_JSON = os.getenv("GSHEET_CREDENTIALS_JSON")  # JSON сервисного аккаунта
+GSHEET_SHEET_ID = os.getenv("GSHEET_SHEET_ID")               # ID таблицы
 
-# Инициализация бота, хранилища и диспетчера
+# Инициализация бота и хранилища состояний
 bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 app = FastAPI()
 
-# Определяем состояния FSM
+# Подключение к Google Sheets (если есть данные)
+sheet = None
+if GSHEET_CREDENTIALS_JSON and GSHEET_SHEET_ID:
+    creds_dict = json.loads(GSHEET_CREDENTIALS_JSON)
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(
+        creds_dict,
+        scopes=[
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+    )
+    gc = gspread.authorize(creds)
+    sheet = gc.open_by_key(GSHEET_SHEET_ID).sheet1
+
+# Определение FSM-состояний
 class Form(StatesGroup):
     lang = State()
     name = State()
@@ -38,19 +58,20 @@ tariff_kb.add(
     types.InlineKeyboardButton("Корпоратив (450 сум/звонок)", callback_data="Корпоратив")
 )
 
+# Хэндлеры
 @dp.message_handler(commands=["start"])
 async def cmd_start(message: types.Message, state: FSMContext):
-    """Старт: выбираем язык"""
     await state.set_state(Form.lang)
-    await message.answer("Пожалуйста, выберите язык / Iltimos tilni tanlang:", reply_markup=lang_kb)
+    await message.answer(
+        "Пожалуйста, выберите язык / Iltimos tilni tanlang:",
+        reply_markup=lang_kb
+    )
 
 @dp.callback_query_handler(lambda c: c.data in ["ru", "uz"], state=Form.lang)
 async def process_lang(call: types.CallbackQuery, state: FSMContext):
-    lang = call.data
-    await state.update_data(lang=lang)
-    # Переходим к следующему шагу: ФИО
+    await state.update_data(lang=call.data)
     await state.set_state(Form.name)
-    prompt = "Введите ваше ФИО:" if lang == "ru" else "Ismingizni kiriting:"
+    prompt = "Введите ваше ФИО:" if call.data == "ru" else "Ismingizni kiriting:"
     await call.message.answer(prompt)
     await call.answer()
 
@@ -85,8 +106,24 @@ async def process_tariff(call: types.CallbackQuery, state: FSMContext):
         f"💼 <b>Тариф:</b> {tariff}"
     )
     await bot.send_message(GROUP_ID, text)
+    # Отправка в Google Sheets (если настроено)
+    if sheet:
+        try:
+            sheet.append_row([
+                data.get('lang'),
+                data.get('name'),
+                data.get('phone'),
+                data.get('company'),
+                tariff
+            ])
+        except Exception as e:
+            print("Ошибка записи в Google Sheets:", e)
     # Благодарим пользователя
-    thank = "Спасибо! Ваша заявка отправлена." if data.get('lang') == "ru" else "Rahmat! Arizangiz qabul qilindi."
+    thank = (
+        "Спасибо! Ваша заявка отправлена." 
+        if data.get('lang') == "ru" 
+        else "Rahmat! Arizangiz qabul qilindi."
+    )
     await call.message.answer(thank)
     await state.finish()
     await call.answer()
@@ -96,17 +133,17 @@ async def cmd_cancel(message: types.Message, state: FSMContext):
     await state.finish()
     await message.reply("Действие отменено.")
 
-# Webhook endpoint
+# Webhook и сервер
 @app.post(WEBHOOK_PATH)
-async def telegram_webhook(request: Request):
-    payload = await request.json()
-    update = types.Update(**payload)
+async def webhook(request: Request):
+    data = await request.json()
+    update = types.Update(**data)
     await dp.process_update(update)
     return {"ok": True}
 
 @app.on_event("startup")
 async def on_startup():
-    await bot.set_webhook(f"{WEBHOOK_URL}{WEBHOOK_PATH}")
+    await bot.set_webhook(WEBHOOK_URL + WEBHOOK_PATH)
 
 @app.on_event("shutdown")
 async def on_shutdown():
