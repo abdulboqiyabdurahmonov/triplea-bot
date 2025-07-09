@@ -2,9 +2,10 @@
 
 import os
 import logging
+import time
+
 import gspread
 import json
-
 from oauth2client.service_account import ServiceAccountCredentials
 
 from aiogram import Bot, Dispatcher, types
@@ -12,6 +13,7 @@ from aiogram.dispatcher import FSMContext
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.utils import executor
+from aiogram.utils.exceptions import TerminatedByOtherGetUpdates
 
 # ——— Параметры ———
 API_TOKEN       = os.getenv('BOT_TOKEN')
@@ -118,20 +120,36 @@ async def process_tariff(message: types.Message, state: FSMContext):
     await state.finish()
 
 
-@dp.message_handler(lambda message: message.text and not message.text.startswith('/'), state='*')
+@dp.message_handler(lambda msg: msg.text and not msg.text.startswith('/'), state='*')
 async def fallback(message: types.Message):
     await message.answer("Чтобы начать, введите команду /start")
 
 
+@dp.errors_handler(exception=TerminatedByOtherGetUpdates)
+async def ignore_conflict(update, exception):
+    logging.warning("Ignored TerminatedByOtherGetUpdates – retrying polling")
+    return True
+
+
 async def on_startup(dp: Dispatcher):
-    # Удаляем любой установленный вебхук и сбрасываем ожидающие обновления
+    # Удаляем вебхук и сбрасываем все старые обновления
     await bot.delete_webhook(drop_pending_updates=True)
     logging.info("Webhook deleted, ready to poll")
 
 
+def run():
+    # Оборачиваем polling в цикл, чтобы при конфликте автоматически перезапуститься
+    while True:
+        try:
+            executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
+            break
+        except TerminatedByOtherGetUpdates:
+            logging.warning("Another polling detected, retry in 5s")
+            time.sleep(5)
+        except Exception:
+            logging.exception("Unexpected error, exiting")
+            break
+
+
 if __name__ == '__main__':
-    executor.start_polling(
-        dp,
-        skip_updates=True,
-        on_startup=on_startup
-    )
+    run()
