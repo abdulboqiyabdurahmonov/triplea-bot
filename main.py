@@ -14,7 +14,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 API_TOKEN     = os.getenv('BOT_TOKEN', 'ВАШ_ТОКЕН_ЗДЕСЬ')
 GROUP_CHAT_ID = int(os.getenv('GROUP_CHAT_ID', '-1002344973979'))
 
-CREDS_FILE       = 'credentials.json'        # файл с ключами Google API
+CREDS_FILE = '/etc/secrets/triplea-bot-250fd4803dd8.json'        # файл с ключами Google API
 SPREADSHEET_NAME = 'Имя_вашей_таблицы'
 WORKSHEET_NAME   = 'Лист1'
 # —————————————————
