@@ -1,97 +1,122 @@
-import logging
-from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    ConversationHandler,
-    ContextTypes,
-    filters,
+import os
+from fastapi import FastAPI, Request
+from aiogram import Bot, Dispatcher, types
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher.filters.state import State, StatesGroup
+
+# Получаем из окружения
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+GROUP_ID = int(os.getenv("GROUP_ID", 0))  # -1002344973979
+WEBHOOK_PATH = os.getenv("WEBHOOK_PATH", "/webhook")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")  # https://your.domain
+
+# Инициализация бота и диспетчера с хранением состояний
+bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
+storage = MemoryStorage()
+dp = Dispatcher(bot, storage=storage)
+app = FastAPI()
+
+# Определяем состояния
+class Form(StatesGroup):
+    lang = State()
+    name = State()
+    phone = State()
+    company = State()
+    tariff = State()
+
+# Клавиатуры
+lang_kb = types.InlineKeyboardMarkup(row_width=2)
+lang_kb.add(
+    types.InlineKeyboardButton("Русский", callback_data="ru"),
+    types.InlineKeyboardButton("O‘zbek", callback_data="uz")
+)
+tariff_kb = types.InlineKeyboardMarkup(row_width=1)
+tariff_kb.add(
+    types.InlineKeyboardButton("Старт (750 сум/звонок)", callback_data="Старт"),
+    types.InlineKeyboardButton("Бизнес (600 сум/звонок)", callback_data="Бизнес"),
+    types.InlineKeyboardButton("Корпоратив (450 сум/звонок)", callback_data="Корпоратив")
 )
 
-# — ВАШ ТОКЕН И ID ГРУППЫ —
-TOKEN = "7993696802:AAHsaOyLkComr4mr2WsC-EgnB5jcHKjd7Ho"
-GROUP_CHAT_ID = -1002344973979  # ID вашей группы
+@dp.message_handler(commands=["start"])
+async def cmd_start(message: types.Message):
+    """Начало диалога — выбираем язык"""
+    await Form.lang.set()
+    await message.answer("Пожалуйста, выберите язык / Iltimos tilni tanlang:", reply_markup=lang_kb)
 
-# — Состояния разговора —
-NAME, PHONE, TARIFF, COMPANY = range(4)
+@dp.callback_query_handler(lambda c: c.data in ["ru", "uz"], state=Form.lang)
+async def process_lang(call: types.CallbackQuery, state: FSMContext):
+    lang = call.data
+    await state.update_data(lang=lang)
+    await state.set_state(Form.name)
+    prompt = "Введите ваше ФИО:" if lang == "ru" else "Ismingizni kiriting:"
+    await call.message.answer(prompt)
+    await call.answer()
 
-logging.basicConfig(level=logging.INFO)
+@dp.message_handler(state=Form.name)
+async def process_name(message: types.Message, state: FSMContext):
+    await state.update_data(name=message.text)
+    await state.set_state(Form.phone)
+    await message.answer("Введите ваш номер телефона:")
 
+@dp.message_handler(state=Form.phone)
+async def process_phone(message: types.Message, state: FSMContext):
+    await state.update_data(phone=message.text)
+    await state.set_state(Form.company)
+    await message.answer("Введите название вашей компании:")
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Запуск разговора, просим ФИО."""
-    await update.message.reply_text("Привет! Пожалуйста, введите ваше ФИО:")
-    return NAME
+@dp.message_handler(state=Form.company)
+async def process_company(message: types.Message, state: FSMContext):
+    await state.update_data(company=message.text)
+    await state.set_state(Form.tariff)
+    await message.answer("Выберите тариф:", reply_markup=tariff_kb)
 
-
-async def name_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data["fio"] = update.message.text
-    await update.message.reply_text("Спасибо! Теперь введите ваш номер телефона:")
-    return PHONE
-
-
-async def phone_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data["phone"] = update.message.text
-    await update.message.reply_text(
-        "Отлично. Выберите тариф (Старт, Бизнес или Корпоративный):"
+@dp.callback_query_handler(lambda c: c.data in ["Старт", "Бизнес", "Корпоратив"], state=Form.tariff)
+async def process_tariff(call: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    tariff = call.data
+    # Собираем сообщение для группы
+    text = (
+        f"📥 <b>Новая заявка</b>\n\n"
+        f"👤 <b>Имя:</b> {data.get('name')}\n"
+        f"📞 <b>Телефон:</b> {data.get('phone')}\n"
+        f"🏢 <b>Компания:</b> {data.get('company')}\n"
+        f"💼 <b>Тариф:</b> {tariff}"
     )
-    return TARIFF
-
-
-async def tariff_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data["tariff"] = update.message.text
-    await update.message.reply_text("И, наконец, введите название вашей компании:")
-    return COMPANY
-
-
-async def company_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data["company"] = update.message.text
-
-    # Формируем итоговое сообщение
-    data = context.user_data
-    summary = (
-        f"📬 *Новая заявка!*\n"
-        f"• *ФИО:* _{data['fio']}_\n"
-        f"• *Телефон:* `{data['phone']}`\n"
-        f"• *Тариф:* _{data['tariff']}_\n"
-        f"• *Компания:* _{data['company']}_"
-    )
-
     # Отправляем в группу
-    await context.bot.send_message(
-        chat_id=GROUP_CHAT_ID, text=summary, parse_mode="Markdown"
-    )
+    await bot.send_message(GROUP_ID, text)
+    # Благодарим пользователя
+    thank = "Спасибо! Ваша заявка отправлена." if data.get('lang') == "ru" else "Rahmat! Arizangiz qabul qilindi."
+    await call.message.answer(thank)
+    await state.finish()
+    await call.answer()
 
-    # Подтверждаем пользователю
-    await update.message.reply_text("Спасибо! Ваша заявка отправлена в группу.")
-    return ConversationHandler.END
+@dp.message_handler(commands=["cancel"], state="*")
+async def cmd_cancel(message: types.Message, state: FSMContext):
+    await state.finish()
+    await message.reply("Действие отменено.")
 
+# Вебхук эндпоинт для FastAPI
+@app.post(WEBHOOK_PATH)
+async def telegram_webhook(request: Request):
+    payload = await request.json()
+    update = types.Update(**payload)
+    await dp.process_update(update)
+    return {"ok": True}
 
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("Опрос отменён.")
-    return ConversationHandler.END
+# Хуки запуска и останова
+@app.on_event("startup")
+async def on_startup():
+    await bot.set_webhook(f"{WEBHOOK_URL}{WEBHOOK_PATH}")
 
+@app.on_event("shutdown")
+async def on_shutdown():
+    await bot.delete_webhook()
+    await storage.close()
+    await storage.wait_closed()
 
-def main() -> None:
-    app = ApplicationBuilder().token(TOKEN).build()
-
-    conv = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
-        states={
-            NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, name_handler)],
-            PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, phone_handler)],
-            TARIFF: [MessageHandler(filters.TEXT & ~filters.COMMAND, tariff_handler)],
-            COMPANY: [MessageHandler(filters.TEXT & ~filters.COMMAND, company_handler)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-    )
-
-    app.add_handler(conv)
-
-    # Для локального запуска через polling
-    app.run_polling()
-
-
+# Локальный запуск по умолчанию (для разработки)
 if __name__ == "__main__":
-    main()
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("telegram_bot:app", host="0.0.0.0", port=port, log_level="info")
