@@ -108,8 +108,10 @@ async def back_to_company(message: types.Message, state: FSMContext):
 async def back_to_phone(message: types.Message, state: FSMContext):
     await Form.phone.set()
     data = await state.get_data()
-    await message.answer(prompts[data['lang']]['ask_phone'],
-                         reply_markup=types.ReplyKeyboardRemove()
+    await message.answer(
+        prompts[data['lang']]['ask_phone'],
+        reply_markup=types.ReplyKeyboardRemove()
+    )
 
 # 3) Назад с телефона на ввод ФИО
 @dp.message_handler(lambda m: m.text == "Назад", state=Form.phone)
