@@ -40,30 +40,30 @@ dp  = Dispatcher(bot, storage=MemoryStorage())
 # Localization texts
 TEXT = {
     'ru': {
-        'choose_lang':  'Пожалуйста, выберите язык:',
-        'invalid_lang': 'Нужно выбрать кнопкой: Русский или O\'zbekcha.',
-        'ask_name':     'Введите ваше ФИО:',
-        'ask_phone':    'Введите номер телефона:',
-        'ask_company':  'Введите название компании:',
-        'ask_tariff':   'Выберите тариф:',
+        'choose_lang':   'Пожалуйста, выберите язык:',
+        'invalid_lang':  "Нужно выбрать кнопкой: Русский или O'zbekcha.",
+        'ask_name':      'Введите ваше ФИО:',
+        'ask_phone':     'Введите номер телефона:',
+        'ask_company':   'Введите название компании:',
+        'ask_tariff':    'Выберите тариф:',
         'invalid_tariff':'Нужно выбрать одним из вариантов кнопками.',
-        'thank_you':    'Спасибо! Ваша заявка отправлена.',
-        'sheet_error':  '⚠️ Заявка отправлена в группу, но не сохранена в таблице.',
-        'tariffs':      ['Старт', 'Бизнес', 'Корпоратив'],
-        'back':         'Назад'
+        'thank_you':     'Спасибо! Ваша заявка отправлена.',
+        'sheet_error':   '⚠️ Заявка отправлена в группу, но не сохранена в таблице.',
+        'tariffs':       ['Старт', 'Бизнес', 'Корпоратив'],
+        'back':          'Назад'
     },
     'uz': {
-        'choose_lang':  "Iltimos, tilni tanlang:",
-        'invalid_lang': "Iltimos, tugmalardan foydalanib tanlang: Ruscha yoki O'zbekcha.",
-        'ask_name':     "Iltimos, FIOingizni kiriting:",
-        'ask_phone':    "Iltimos, telefon raqamingizni kiriting:",
-        'ask_company':  "Iltimos, kompaniya nomini kiriting:",
-        'ask_tariff':   "Iltimos, tarifni tanlang:",
+        'choose_lang':   "Iltimos, tilni tanlang:",
+        'invalid_lang':  "Iltimos, tugmalardan foydalanib tanlang: Ruscha yoki O'zbekcha.",
+        'ask_name':      "Iltimos, FIOingizni kiriting:",
+        'ask_phone':     "Iltimos, telefon raqamingizni kiriting:",
+        'ask_company':   "Iltimos, kompaniya nomini kiriting:",
+        'ask_tariff':    "Iltimos, tarifni tanlang:",
         'invalid_tariff':'Iltimos, variantlardan birini tanlang tugmalar orqali.',
-        'thank_you':    'Rahmat! Arizangiz yuborildi.',
-        'sheet_error':  '⚠️ Ariza guruhga yuborildi, lekin jadvalga yozilmadi.',
-        'tariffs':      ['Boshlang‘ich', 'Biznes', 'Korporativ'],
-        'back':         'Orqaga'
+        'thank_you':     'Rahmat! Arizangiz yuborildi.',
+        'sheet_error':   '⚠️ Ariza guruhga yuborildi, lekin jadvalga yozilmadi.',
+        'tariffs':       ['Boshlang‘ich', 'Biznes', 'Korporativ'],
+        'back':          'Orqaga'
     }
 }
 
@@ -76,7 +76,6 @@ class Form(StatesGroup):
     tariff  = State()
 
 # Keyboards
-
 def build_lang_kb():
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     kb.add('Русский', "O'zbekcha")
@@ -93,9 +92,10 @@ async def cmd_start(message: types.Message, state: FSMContext):
 @dp.message_handler(state=Form.lang)
 async def process_lang(message: types.Message, state: FSMContext):
     text = message.text.strip().lower()
-    logging.info(f"[process_lang] Received: {message.text!r}")
-    if text == 'русский': lang = 'ru'
-    elif text in ("o'zbekcha", 'узбекский'): lang = 'uz'
+    if text == 'русский':
+        lang = 'ru'
+    elif text in ("o'zbekcha", 'узбекский'):
+        lang = 'uz'
     else:
         return await message.answer(TEXT['ru']['invalid_lang'])
     await state.update_data(lang=lang)
@@ -122,7 +122,8 @@ async def process_phone(message: types.Message, state: FSMContext):
 @dp.message_handler(state=Form.company)
 async def process_company(message: types.Message, state: FSMContext):
     await state.update_data(company=message.text.strip())
-    data = await state.get_data(); lang = data['lang']
+    data = await state.get_data()
+    lang = data['lang']
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     kb.add(TEXT[lang]['back'])
     for t in TEXT[lang]['tariffs']:
@@ -133,37 +134,56 @@ async def process_company(message: types.Message, state: FSMContext):
 # Tariff
 @dp.message_handler(state=Form.tariff)
 async def process_tariff(message: types.Message, state: FSMContext):
-    data = await state.get_data(); lang = data['lang']; tariffs = TEXT[lang]['tariffs']
+    data    = await state.get_data()
+    lang    = data['lang']
+    tariffs = TEXT[lang]['tariffs']
     if message.text not in tariffs:
         return await message.answer(TEXT[lang]['invalid_tariff'])
+
     await state.update_data(tariff=message.text)
     data = await state.get_data()
-    # send to group
-    summary = (f"📥 Новая заявка!\n"
-               f"👤 ФИО: {data['name']}\n"
-               f"📞 Тел: {data['phone']}\n"
-               f"🏢 Компания: {data['company']}\n"
-               f"💼 Тариф: {data['tariff']}")
+
+    # 1) отправляем в Telegram-группу
+    summary = (
+        f"📥 Новая заявка!\n"
+        f"👤 ФИО: {data['name']}\n"
+        f"📞 Тел: {data['phone']}\n"
+        f"🏢 Компания: {data['company']}\n"
+        f"💼 Тариф: {data['tariff']}"
+    )
     try:
         await bot.send_message(GROUP_CHAT_ID, summary)
     except Exception as e:
         logging.error(f"Error sending to group: {e}")
         await message.answer(TEXT[lang]['sheet_error'])
-    # write to sheet
+
+    # 2) записываем в Google Sheets
     try:
         sheet = get_sheet()
-        sheet.append_row([datetime.utcnow().isoformat(), data['name'], data['phone'], data['company'], data['tariff']],
-                         value_input_option='USER_ENTERED')
+        sheet.append_row([
+            datetime.utcnow().isoformat(),
+            data['name'],
+            data['phone'],
+            data['company'],
+            data['tariff']
+        ], value_input_option='USER_ENTERED')
+        logging.info("Append to sheet succeeded")
     except Exception as e:
         logging.error(f"Error writing to sheet: {e}")
         await message.answer(TEXT[lang]['sheet_error'])
+
+    # финальный ответ
     await message.answer(TEXT[lang]['thank_you'], reply_markup=types.ReplyKeyboardRemove())
     await state.finish()
 
 # Back
-@dp.message_handler(lambda m: m.text in (TEXT['ru']['back'], TEXT['uz']['back']), state=Form.tariff)
+@dp.message_handler(
+    lambda m: m.text in (TEXT['ru']['back'], TEXT['uz']['back']),
+    state=Form.tariff
+)
 async def back_to_company(message: types.Message, state: FSMContext):
-    data = await state.get_data(); lang = data['lang']
+    data = await state.get_data()
+    lang = data['lang']
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     kb.add(TEXT[lang]['back'])
     for t in TEXT[lang]['tariffs']:
@@ -176,7 +196,7 @@ async def back_to_company(message: types.Message, state: FSMContext):
 async def cmd_debug_sheet(message: types.Message, state: FSMContext):
     await state.finish()
     try:
-        ss = gc.open_by_key(SPREADSHEET_ID)
+        ss    = gc.open_by_key(SPREADSHEET_ID)
         names = [ws.title for ws in ss.worksheets()]
         await message.answer(f"Sheets: {names}")
     except Exception as e:
