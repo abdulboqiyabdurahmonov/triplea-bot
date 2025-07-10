@@ -203,15 +203,11 @@ from datetime import datetime
 
 @dp.message_handler(commands=['test_sheet'])
 async def cmd_test_sheet(message: types.Message):
-    """
-    Просто пушим тестовую строку в вашу Google-таблицу
-    и выводим результат прямо в чат.
-    """
     try:
         sheet = get_sheet()
         row = [
-            datetime.utcnow().isoformat(), 
-            '✅ TEST',     # метка-маркер
+            datetime.utcnow().isoformat(),
+            '✅ TEST', 
             message.from_user.full_name,
             message.from_user.id,
             'Acme Inc.',
