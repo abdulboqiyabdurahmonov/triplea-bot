@@ -208,24 +208,6 @@ async def cancel_all(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer('Отменено. /start для начала.', reply_markup=types.ReplyKeyboardRemove())
 
-import datetime
-
-@dp.message_handler(commands=['debug_sheet'], state='*')
-async def debug_sheet(message: types.Message, state: FSMContext):
-    # сбросим FSM, чтобы не мешалось
-    await state.finish()
-    try:
-        sheet = get_sheet()
-        # вставляем тестовую строку с отметкой времени
-        sheet.append_row([
-            datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "DEBUG",
-            "TEST ROW"
-        ])
-        await message.answer("✅ Успех! Тестовая строка добавлена в таблицу.")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка доступа к таблице: {e}")
-
 # Fallback handler (last)
 @dp.message_handler()
 async def fallback(message: types.Message):
@@ -234,31 +216,3 @@ async def fallback(message: types.Message):
 # Run bot
 if __name__ == '__main__':
     start_polling(dp, skip_updates=True)
-
-@dp.message_handler(commands=['debug_sheet'], state='*')
-async def debug_sheet(message: types.Message):
-    try:
-        sheet = get_sheet()
-        sheet.append_row(['🐞 debug', str(datetime.datetime.now())])
-        await message.reply("✅ Sheet append OK")
-    except Exception as e:
-        await message.reply(f"❌ Sheet append FAILED:\n{e}")
-        
-@dp.message_handler(commands=['cancel'], state='*')
-async def cancel_cmd(message: types.Message, state: FSMContext):
-    await state.finish()
-    await message.answer("Отменено. /start чтобы начать заново.", reply_markup=types.ReplyKeyboardRemove())
-
-# прямо под всеми import-ами и авторизацией Google Sheets
-from aiogram.dispatcher import filters
-
-@dp.message_handler(commands=['cancel'], state='*')
-@dp.message_handler(lambda m: m.text == "Отмена", state='*')
-async def cancel_all(message: types.Message, state: FSMContext):
-    await state.finish()
-    await message.answer(
-        "Отменено. /start — чтобы начать заново.",
-        reply_markup=types.ReplyKeyboardRemove()
-    )
-
-
