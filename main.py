@@ -1,6 +1,7 @@
 import os
 import re
 import logging
+import asyncio
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -24,9 +25,15 @@ WORKSHEET_NAME = os.getenv('WORKSHEET_NAME', 'Лист1')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logging.info(f"Config loaded: GROUP_CHAT_ID={GROUP_CHAT_ID}, SPREADSHEET_ID={SPREADSHEET_ID}")
 
-# Initialize bot and dispatcher
+# Initialize bot and immediately delete any webhook (sync)
 bot = Bot(token=API_TOKEN)
-dp  = Dispatcher(bot, storage=MemoryStorage())
+# Убираем старый вебхук перед всеми getUpdates
+asyncio.get_event_loop().run_until_complete(
+    bot.delete_webhook(drop_pending_updates=True)
+)
+
+# Initialize dispatcher
+dp = Dispatcher(bot, storage=MemoryStorage())
 
 # Google Sheets authorization
 scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
@@ -275,9 +282,6 @@ async def cancel_all(message: types.Message, state: FSMContext):
 async def fallback(message: types.Message):
     await message.answer('Я вас не понял. /start для начала.')
 
-# перед polling удаляем вебхук
-async def on_startup(dp):
-    await bot.delete_webhook(drop_pending_updates=True)
-
 if __name__ == '__main__':
-    start_polling(dp, skip_updates=True, on_startup=on_startup)
+    # Теперь просто стартуем polling — вебхук уже снят в самом верху
+    start_polling(dp, skip_updates=True)
