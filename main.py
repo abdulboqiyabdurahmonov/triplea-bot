@@ -231,3 +231,16 @@ async def cancel_cmd(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer("Отменено. /start чтобы начать заново.", reply_markup=types.ReplyKeyboardRemove())
 
+# прямо под всеми import-ами и авторизацией Google Sheets
+from aiogram.dispatcher import filters
+
+@dp.message_handler(commands=['cancel'], state='*')
+@dp.message_handler(lambda m: m.text == "Отмена", state='*')
+async def cancel_all(message: types.Message, state: FSMContext):
+    await state.finish()
+    await message.answer(
+        "Отменено. /start — чтобы начать заново.",
+        reply_markup=types.ReplyKeyboardRemove()
+    )
+
+
