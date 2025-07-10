@@ -1,4 +1,3 @@
-```python
 import os
 import logging
 import gspread
@@ -71,7 +70,6 @@ prompts = {
         'tariffs':        ['Boshlang‘ich', 'Biznes', 'Korporativ']
     }
 }
-# ————————————————————————————————————————————————————————————
 
 class Form(StatesGroup):
     lang    = State()
@@ -125,7 +123,6 @@ async def process_company(message: types.Message, state: FSMContext):
 async def process_tariff(message: types.Message, state: FSMContext):
     data = await state.get_data()
     p = prompts[data['lang']]
-    # принимаем тарифы обеих локалей
     valid = prompts['Русский']['tariffs'] + prompts['Узбекский']['tariffs']
     if message.text not in valid:
         return await message.answer(p['invalid_tariff'])
@@ -144,10 +141,9 @@ async def process_tariff(message: types.Message, state: FSMContext):
 
     try:
         sheet = get_sheet()
-        sheet.append_row(
-            [data['lang'], data['name'], data['phone'], data['company'], data['tariff']],
-            value_input_option='USER_ENTERED'
-        )
+        sheet.append_row([
+            data['lang'], data['name'], data['phone'], data['company'], data['tariff']
+        ], value_input_option='USER_ENTERED')
         await message.answer(p['thank_you'], reply_markup=types.ReplyKeyboardRemove())
     except Exception as e:
         logging.error(f"Ошибка при записи в Google Sheets: {e}")
@@ -206,4 +202,3 @@ if __name__ == '__main__':
         )
     else:
         start_polling(dp, skip_updates=True, on_startup=on_startup)
-```
