@@ -26,7 +26,10 @@ logging.basicConfig(
 logging.info(f"Config loaded: GROUP_CHAT_ID={GROUP_CHAT_ID}, SPREADSHEET_ID={SPREADSHEET_ID}")
 
 # Google Sheets authorization
-gscope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+gscope = [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive'
+]
 creds = ServiceAccountCredentials.from_json_keyfile_name(CREDS_FILE, gscope)
 gc    = gspread.authorize(creds)
 
@@ -81,7 +84,7 @@ def build_lang_kb():
     kb.add('Русский', "O'zbekcha")
     return kb
 
-# /start handler
+# /start
 @dp.message_handler(commands=['start'], state='*')
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.finish()
@@ -91,10 +94,10 @@ async def cmd_start(message: types.Message, state: FSMContext):
 # Language selection
 @dp.message_handler(state=Form.lang)
 async def process_lang(message: types.Message, state: FSMContext):
-    text = message.text.strip().lower()
-    if text == 'русский':
+    txt = message.text.strip().lower()
+    if txt == 'русский':
         lang = 'ru'
-    elif text in ("o'zbekcha", 'узбекский'):
+    elif txt in ("o'zbekcha", 'узбекский'):
         lang = 'uz'
     else:
         return await message.answer(TEXT['ru']['invalid_lang'])
@@ -143,7 +146,7 @@ async def process_tariff(message: types.Message, state: FSMContext):
     await state.update_data(tariff=message.text)
     data = await state.get_data()
 
-    # 1) отправляем в Telegram-группу
+    # 1) в группу
     summary = (
         f"📥 Новая заявка!\n"
         f"👤 ФИО: {data['name']}\n"
@@ -157,7 +160,7 @@ async def process_tariff(message: types.Message, state: FSMContext):
         logging.error(f"Error sending to group: {e}")
         await message.answer(TEXT[lang]['sheet_error'])
 
-    # 2) записываем в Google Sheets
+    # 2) в Google Sheets
     try:
         sheet = get_sheet()
         sheet.append_row([
@@ -167,12 +170,11 @@ async def process_tariff(message: types.Message, state: FSMContext):
             data['company'],
             data['tariff']
         ], value_input_option='USER_ENTERED')
-        logging.info("Append to sheet succeeded")
     except Exception as e:
         logging.error(f"Error writing to sheet: {e}")
         await message.answer(TEXT[lang]['sheet_error'])
 
-    # финальный ответ
+    # завершаем
     await message.answer(TEXT[lang]['thank_you'], reply_markup=types.ReplyKeyboardRemove())
     await state.finish()
 
@@ -209,8 +211,8 @@ async def cancel_all(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer('Отменено. /start для начала.', reply_markup=types.ReplyKeyboardRemove())
 
-# Fallback
-@dp.message_handler()
+# Fallback только при state=None
+@dp.message_handler(state=None)
 async def fallback(message: types.Message):
     await message.answer('Я вас не понял. /start для начала.')
 
