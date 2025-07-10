@@ -225,4 +225,9 @@ async def debug_sheet(message: types.Message):
         await message.reply("✅ Sheet append OK")
     except Exception as e:
         await message.reply(f"❌ Sheet append FAILED:\n{e}")
+        
+@dp.message_handler(commands=['cancel'], state='*')
+async def cancel_cmd(message: types.Message, state: FSMContext):
+    await state.finish()
+    await message.answer("Отменено. /start чтобы начать заново.", reply_markup=types.ReplyKeyboardRemove())
 
