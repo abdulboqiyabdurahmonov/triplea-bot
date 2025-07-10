@@ -99,14 +99,13 @@ def yes_no_kb():
     )
     return kb
 
-# /start
+# Handlers
 @dp.message_handler(commands=['start'], state='*')
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.finish()
     await Form.lang.set()
     await message.answer(TEXT['ru']['choose_lang'], reply_markup=build_lang_kb())
 
-# 1) Язык
 @dp.message_handler(state=Form.lang)
 async def process_lang(message: types.Message, state: FSMContext):
     txt = message.text.strip().lower()
@@ -120,7 +119,6 @@ async def process_lang(message: types.Message, state: FSMContext):
     await Form.name.set()
     await message.answer(TEXT[lang]['ask_name'], reply_markup=types.ReplyKeyboardRemove())
 
-# 2) ФИО → подтверждение
 @dp.message_handler(state=Form.name)
 async def process_name(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text.strip())
@@ -131,6 +129,7 @@ async def process_name(message: types.Message, state: FSMContext):
 @dp.callback_query_handler(lambda c: c.data in ['yes','no'], state=Form.name_confirm)
 async def confirm_name(call: CallbackQuery, state: FSMContext):
     data = await state.get_data(); lang = data['lang']
+    await call.answer()
     if call.data == 'yes':
         await Form.phone.set()
         await call.message.delete()
@@ -139,9 +138,7 @@ async def confirm_name(call: CallbackQuery, state: FSMContext):
         await Form.name.set()
         await call.message.delete()
         await call.message.answer(TEXT[lang]['ask_name'])
-    await call.answer()
 
-# 3) Телефон → нормализация → подтверждение
 @dp.message_handler(state=Form.phone)
 async def process_phone(message: types.Message, state: FSMContext):
     raw = message.text.strip()
@@ -163,6 +160,7 @@ async def process_phone(message: types.Message, state: FSMContext):
 @dp.callback_query_handler(lambda c: c.data in ['yes','no'], state=Form.phone_confirm)
 async def confirm_phone(call: CallbackQuery, state: FSMContext):
     data = await state.get_data(); lang = data['lang']
+    await call.answer()
     if call.data == 'yes':
         await Form.email.set()
         await call.message.delete()
@@ -171,9 +169,7 @@ async def confirm_phone(call: CallbackQuery, state: FSMContext):
         await Form.phone.set()
         await call.message.delete()
         await call.message.answer(TEXT[lang]['ask_phone'])
-    await call.answer()
 
-# 4) E-mail → валидация → подтверждение
 @dp.message_handler(state=Form.email)
 async def process_email(message: types.Message, state: FSMContext):
     email = message.text.strip()
@@ -188,6 +184,7 @@ async def process_email(message: types.Message, state: FSMContext):
 @dp.callback_query_handler(lambda c: c.data in ['yes','no'], state=Form.email_confirm)
 async def confirm_email(call: CallbackQuery, state: FSMContext):
     data = await state.get_data(); lang = data['lang']
+    await call.answer()
     if call.data == 'yes':
         await Form.company.set()
         await call.message.delete()
@@ -196,9 +193,7 @@ async def confirm_email(call: CallbackQuery, state: FSMContext):
         await Form.email.set()
         await call.message.delete()
         await call.message.answer(TEXT[lang]['ask_email'])
-    await call.answer()
 
-# 5) Компания → подтверждение
 @dp.message_handler(state=Form.company)
 async def process_company(message: types.Message, state: FSMContext):
     await state.update_data(company=message.text.strip())
@@ -209,6 +204,7 @@ async def process_company(message: types.Message, state: FSMContext):
 @dp.callback_query_handler(lambda c: c.data in ['yes','no'], state=Form.company_confirm)
 async def confirm_company(call: CallbackQuery, state: FSMContext):
     data = await state.get_data(); lang = data['lang']
+    await call.answer()
     if call.data == 'yes':
         kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         kb.add(TEXT[lang]['back'], *TEXT[lang]['tariffs'])
@@ -219,9 +215,7 @@ async def confirm_company(call: CallbackQuery, state: FSMContext):
         await Form.company.set()
         await call.message.delete()
         await call.message.answer(TEXT[lang]['ask_company'])
-    await call.answer()
 
-# 6) Тариф → подтверждение → финальная отправка
 @dp.message_handler(state=Form.tariff)
 async def process_tariff(message: types.Message, state: FSMContext):
     data = await state.get_data(); lang = data['lang']
@@ -234,6 +228,7 @@ async def process_tariff(message: types.Message, state: FSMContext):
 @dp.callback_query_handler(lambda c: c.data in ['yes','no'], state=Form.tariff_confirm)
 async def confirm_tariff(call: CallbackQuery, state: FSMContext):
     data = await state.get_data(); lang = data['lang']
+    await call.answer()
     if call.data == 'yes':
         summary = (
             f"📥 Новая заявка!\n"
@@ -270,18 +265,19 @@ async def confirm_tariff(call: CallbackQuery, state: FSMContext):
         await Form.tariff.set()
         await call.message.delete()
         await call.message.answer(TEXT[lang]['ask_tariff'], reply_markup=kb)
-    await call.answer()
 
-# Cancel
 @dp.message_handler(lambda m: m.text.lower() == 'отмена', state='*')
 async def cancel_all(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer('Отменено. /start для начала.', reply_markup=types.ReplyKeyboardRemove())
 
-# Fallback
 @dp.message_handler(state=None)
 async def fallback(message: types.Message):
     await message.answer('Я вас не понял. /start для начала.')
 
+# перед polling удаляем вебхук
+async def on_startup(dp):
+    await bot.delete_webhook(drop_pending_updates=True)
+
 if __name__ == '__main__':
-    start_polling(dp, skip_updates=True)
+    start_polling(dp, skip_updates=True, on_startup=on_startup)
