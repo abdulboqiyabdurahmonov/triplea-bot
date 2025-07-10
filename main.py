@@ -216,3 +216,13 @@ async def fallback(message: types.Message):
 # Run bot
 if __name__ == '__main__':
     start_polling(dp, skip_updates=True)
+
+@dp.message_handler(commands=['debug_sheet'], state='*')
+async def debug_sheet(message: types.Message):
+    try:
+        sheet = get_sheet()
+        sheet.append_row(['🐞 debug', str(datetime.datetime.now())])
+        await message.reply("✅ Sheet append OK")
+    except Exception as e:
+        await message.reply(f"❌ Sheet append FAILED:\n{e}")
+
