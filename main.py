@@ -17,7 +17,7 @@ SPREADSHEET_ID = '1AbCdEfGhIJkLmNoPqRsTuVwXyZ1234567890'
 WORKSHEET_NAME = 'Лист1'
 
 # Для Webhook:
-WEBHOOK_HOST   = os.getenv('WEBHOOK_HOST')            # например https://myapp.onrender.com
+WEBHOOK_HOST   = os.getenv('WEBHOOK_HOST')            # e.g. https://myapp.onrender.com
 WEBHOOK_PATH   = f'/webhook/{API_TOKEN}'
 WEBHOOK_URL    = WEBHOOK_HOST + WEBHOOK_PATH
 
@@ -62,13 +62,13 @@ prompts = {
         'ask_name':       "Iltimos, ismingiz va familiyangizni kiriting:",
         'ask_phone':      "Iltimos, telefon raqamingizni kiriting:",
         'ask_company':    "Iltimos, kompaniya nomini kiriting:",
-        'ask_tariff':     "Iltimos, tarifni tanlang:",
-        'invalid_tariff': "Iltimos, quydagi tariflardan birini tanlang tugmalar orqali.",
+        'ask_tariff':     "Iltimos, quydan tarifni tanlang:",
+        'invalid_tariff': "Iltimos, quydagi tariflardan birini tanlang.",
         'thank_you':      "Rahmat! Murojaatingiz yuborildi.",
         'sheet_error':    "⚠️ Arizani jadvalga saqlashda muammo yuz berdi, lekin guruhga yuborildi.",
         'fallback':       "/start buyrug'ini kiriting, iltimos.",
-        'back':           "Ortga",
-        'tariffs':        ["Start", "Biznes", "Korporativ"]
+        'back':           "Orqaga",
+        'tariffs':        ["Boshlang‘ich", "Biznes", "Korporativ"]
     }
 }
 # ————————————————————————————————————————————————————————————
@@ -125,7 +125,9 @@ async def process_company(message: types.Message, state: FSMContext):
 async def process_tariff(message: types.Message, state: FSMContext):
     data = await state.get_data()
     p = prompts[data['lang']]
-    if message.text not in p['tariffs']:
+    # расширенный набор: принимаем и русские, и узбекские названия тарифов
+    valid = prompts['Русский']['tariffs'] + prompts['Узбекский']['tariffs']
+    if message.text not in valid:
         return await message.answer(p['invalid_tariff'])
     await state.update_data(tariff=message.text)
     data = await state.get_data()
@@ -155,7 +157,7 @@ async def process_tariff(message: types.Message, state: FSMContext):
 
     await state.finish()
 
-# Обработка «Назад» для всех состояний
+# Обработка «Назад»
 for st in ('tariff','company','phone','name'):
     @dp.message_handler(lambda m, st=st: m.text == prompts['Русский']['back'] or m.text == prompts['Узбекский']['back'], state=getattr(Form, st))
     async def go_back(message: types.Message, state: FSMContext, st=st):
@@ -181,7 +183,6 @@ async def fallback(message: types.Message):
 
 # — Webhook старт ————————————————————————————————————————————
 async def on_startup(dp):
-    # ставим Webhook у Telegram
     await bot.set_webhook(WEBHOOK_URL)
     logging.info(f"Webhook установлен: {WEBHOOK_URL}")
 
@@ -189,7 +190,6 @@ async def on_shutdown(dp):
     logging.warning("Shutting down..")
     await bot.delete_webhook()
     logging.warning("Webhook удалён")
-# ————————————————————————————————————————————————————————————
 
 if __name__ == '__main__':
     start_webhook(
