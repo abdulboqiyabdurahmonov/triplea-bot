@@ -208,6 +208,24 @@ async def cancel_all(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer('Отменено. /start для начала.', reply_markup=types.ReplyKeyboardRemove())
 
+import datetime
+
+@dp.message_handler(commands=['debug_sheet'], state='*')
+async def debug_sheet(message: types.Message, state: FSMContext):
+    # сбросим FSM, чтобы не мешалось
+    await state.finish()
+    try:
+        sheet = get_sheet()
+        # вставляем тестовую строку с отметкой времени
+        sheet.append_row([
+            datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "DEBUG",
+            "TEST ROW"
+        ])
+        await message.answer("✅ Успех! Тестовая строка добавлена в таблицу.")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка доступа к таблице: {e}")
+
 # Fallback handler (last)
 @dp.message_handler()
 async def fallback(message: types.Message):
