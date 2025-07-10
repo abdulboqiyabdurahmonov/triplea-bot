@@ -1,7 +1,6 @@
 import os
 import re
 import logging
-import asyncio
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -25,11 +24,9 @@ WORKSHEET_NAME = os.getenv('WORKSHEET_NAME', 'Лист1')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logging.info(f"Config loaded: GROUP_CHAT_ID={GROUP_CHAT_ID}, SPREADSHEET_ID={SPREADSHEET_ID}")
 
-# Remove any existing webhook before starting polling
+# Initialize bot and dispatcher
 bot = Bot(token=API_TOKEN)
-asyncio.get_event_loop().run_until_complete(
-    bot.delete_webhook(drop_pending_updates=True)
-)
+dp  = Dispatcher(bot, storage=MemoryStorage())
 
 # Google Sheets authorization
 scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
@@ -37,9 +34,6 @@ creds = ServiceAccountCredentials.from_json_keyfile_name(CREDS_FILE, scope)
 gc    = gspread.authorize(creds)
 def get_sheet():
     return gc.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME)
-
-# Initialize dispatcher
-dp  = Dispatcher(bot, storage=MemoryStorage())
 
 # Localization texts
 TEXT = {
@@ -230,7 +224,7 @@ async def confirm_company(call: CallbackQuery, state: FSMContext):
 # 6) Тариф → подтверждение → финальная отправка
 @dp.message_handler(state=Form.tariff)
 async def process_tariff(message: types.Message, state: FSMContext):
-    data    = await state.get_data(); lang = data['lang']
+    data = await state.get_data(); lang = data['lang']
     if message.text not in TEXT[lang]['tariffs']:
         return await message.answer(TEXT[lang]['invalid_tariff'])
     await state.update_data(tariff=message.text)
@@ -267,18 +261,15 @@ async def confirm_tariff(call: CallbackQuery, state: FSMContext):
         except Exception as e:
             logging.error(f"Error writing to sheet: {e}")
             await call.message.answer(TEXT[lang]['sheet_error'])
-
         await call.message.delete()
         await call.message.answer(TEXT[lang]['thank_you'], reply_markup=types.ReplyKeyboardRemove())
         await state.finish()
-
     else:
         kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         kb.add(TEXT[lang]['back'], *TEXT[lang]['tariffs'])
         await Form.tariff.set()
         await call.message.delete()
         await call.message.answer(TEXT[lang]['ask_tariff'], reply_markup=kb)
-
     await call.answer()
 
 # Cancel
@@ -292,6 +283,5 @@ async def cancel_all(message: types.Message, state: FSMContext):
 async def fallback(message: types.Message):
     await message.answer('Я вас не понял. /start для начала.')
 
-# Run
 if __name__ == '__main__':
     start_polling(dp, skip_updates=True)
