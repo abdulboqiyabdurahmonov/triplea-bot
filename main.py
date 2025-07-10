@@ -1,6 +1,7 @@
 import os
 import re
 import logging
+import asyncio
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -24,6 +25,12 @@ WORKSHEET_NAME = os.getenv('WORKSHEET_NAME', 'Лист1')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logging.info(f"Config loaded: GROUP_CHAT_ID={GROUP_CHAT_ID}, SPREADSHEET_ID={SPREADSHEET_ID}")
 
+# Remove any existing webhook before starting polling
+bot = Bot(token=API_TOKEN)
+asyncio.get_event_loop().run_until_complete(
+    bot.delete_webhook(drop_pending_updates=True)
+)
+
 # Google Sheets authorization
 scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
 creds = ServiceAccountCredentials.from_json_keyfile_name(CREDS_FILE, scope)
@@ -31,8 +38,7 @@ gc    = gspread.authorize(creds)
 def get_sheet():
     return gc.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME)
 
-# Initialize bot and dispatcher
-bot = Bot(token=API_TOKEN)
+# Initialize dispatcher
 dp  = Dispatcher(bot, storage=MemoryStorage())
 
 # Localization texts
@@ -133,7 +139,6 @@ async def confirm_name(call: CallbackQuery, state: FSMContext):
     data = await state.get_data(); lang = data['lang']
     if call.data == 'yes':
         await Form.phone.set()
-        # удаляем inline и шлём новое
         await call.message.delete()
         await call.message.answer(TEXT[lang]['ask_phone'])
     else:
@@ -142,7 +147,7 @@ async def confirm_name(call: CallbackQuery, state: FSMContext):
         await call.message.answer(TEXT[lang]['ask_name'])
     await call.answer()
 
-# 3) Телефон → нормализация, валидация → подтверждение
+# 3) Телефон → нормализация → подтверждение
 @dp.message_handler(state=Form.phone)
 async def process_phone(message: types.Message, state: FSMContext):
     raw = message.text.strip()
@@ -236,7 +241,6 @@ async def process_tariff(message: types.Message, state: FSMContext):
 async def confirm_tariff(call: CallbackQuery, state: FSMContext):
     data = await state.get_data(); lang = data['lang']
     if call.data == 'yes':
-        # отправляем в Telegram
         summary = (
             f"📥 Новая заявка!\n"
             f"👤 ФИО: {data['name']}\n"
@@ -250,7 +254,6 @@ async def confirm_tariff(call: CallbackQuery, state: FSMContext):
         except Exception as e:
             logging.error(f"Error sending to group: {e}")
             await call.message.answer(TEXT[lang]['sheet_error'])
-        # записываем в Google Sheets
         try:
             sheet = get_sheet()
             sheet.append_row([
@@ -264,13 +267,12 @@ async def confirm_tariff(call: CallbackQuery, state: FSMContext):
         except Exception as e:
             logging.error(f"Error writing to sheet: {e}")
             await call.message.answer(TEXT[lang]['sheet_error'])
-        # финальное сообщение
+
         await call.message.delete()
         await call.message.answer(TEXT[lang]['thank_you'], reply_markup=types.ReplyKeyboardRemove())
         await state.finish()
 
     else:
-        # возвращаемся на выбор тарифа
         kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         kb.add(TEXT[lang]['back'], *TEXT[lang]['tariffs'])
         await Form.tariff.set()
@@ -290,10 +292,6 @@ async def cancel_all(message: types.Message, state: FSMContext):
 async def fallback(message: types.Message):
     await message.answer('Я вас не понял. /start для начала.')
 
-# On startup – удаляем вебхук (если был)
-async def on_startup(dp):
-    await bot.delete_webhook(drop_pending_updates=True)
-
 # Run
 if __name__ == '__main__':
-    start_polling(dp, skip_updates=True, on_startup=on_startup)
+    start_polling(dp, skip_updates=True)
