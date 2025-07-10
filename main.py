@@ -198,3 +198,28 @@ async def fallback(message: types.Message):
 # Run bot
 if __name__ == '__main__':
     start_polling(dp, skip_updates=True)
+
+from datetime import datetime
+
+@dp.message_handler(commands=['test_sheet'])
+async def cmd_test_sheet(message: types.Message):
+    """
+    Просто пушим тестовую строку в вашу Google-таблицу
+    и выводим результат прямо в чат.
+    """
+    try:
+        sheet = get_sheet()
+        row = [
+            datetime.utcnow().isoformat(), 
+            '✅ TEST',     # метка-маркер
+            message.from_user.full_name,
+            message.from_user.id,
+            'Acme Inc.',
+            'Старт'
+        ]
+        sheet.append_row(row, value_input_option='USER_ENTERED')
+        await message.answer('✅ Тестовая строка добавлена в Google Sheets!')
+    except Exception as e:
+        await message.answer(f'❌ Не удалось записать строку: {e}')
+        logging.error(f'TEST_SHEET_ERROR: {e}')
+
