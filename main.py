@@ -8,6 +8,7 @@ from aiogram.dispatcher import FSMContext
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.utils.executor import start_webhook, start_polling
+from datetime import datetime
 
 # ——— Параметры —————————————————————————————————————————————
 API_TOKEN      = os.getenv('BOT_TOKEN')
@@ -16,8 +17,8 @@ CREDS_FILE     = '/etc/secrets/triplea-bot-250fd4803dd8.json'
 SPREADSHEET_ID = '1AbCdEfGhIJkLmNoPqRsTuVwXyZ1234567890'
 WORKSHEET_NAME = 'Лист1'
 
-# Для Webhook (при отсутствии WEBHOOK_HOST будет использоваться polling):
-WEBHOOK_HOST   = os.getenv('WEBHOOK_HOST', '')    # e.g. https://myapp.onrender.com
+# Для Webhook (если не задан — polling):
+WEBHOOK_HOST   = os.getenv('WEBHOOK_HOST', '')
 WEBHOOK_PATH   = f'/webhook/{API_TOKEN}'
 WEBHOOK_URL    = WEBHOOK_HOST + WEBHOOK_PATH
 WEBAPP_HOST    = '0.0.0.0'
@@ -63,13 +64,14 @@ prompts = {
         'ask_company':    'Iltimos, kompaniya nomini kiriting:',
         'ask_tariff':     'Iltimos, quydan tarifni tanlang:',
         'invalid_tariff': 'Iltimos, quydagi tariflardan birini tanlang.',
-        'thank_you':      'Rahmat! Murojaatingiz yuborildi.',
+        'thank_you':      'Rahмат! Murojaatingiz yuborildi.',
         'sheet_error':    '⚠️ Arizani jadvalga saqlashda muammo yuz berdi, lekin guruhga yuborildi.',
         'fallback':       "/start buyrug'ini kiriting, iltimos.",
         'back':           'Orqaga',
         'tariffs':        ['Boshlang‘ich', 'Biznes', 'Korporativ']
     }
 }
+# ————————————————————————————————————————————————————————————
 
 class Form(StatesGroup):
     lang    = State()
@@ -139,17 +141,31 @@ async def process_tariff(message: types.Message, state: FSMContext):
     )
     await bot.send_message(GROUP_CHAT_ID, summary)
 
+    # Debug: попытка записи простого сообщения
     try:
         sheet = get_sheet()
         sheet.append_row([
+            datetime.utcnow().isoformat(),
             data['lang'], data['name'], data['phone'], data['company'], data['tariff']
         ], value_input_option='USER_ENTERED')
-        await message.answer(p['thank_you'], reply_markup=types.ReplyKeyboardRemove())
+        logging.info('Запись в таблицу прошла успешно')
     except Exception as e:
         logging.error(f"Ошибка при записи в Google Sheets: {e}")
-        await message.answer(p['sheet_error'], reply_markup=types.ReplyKeyboardRemove())
+        # посылаем диагностику пользователю
+        await bot.send_message(message.chat.id, f"Ошибка записи в таблицу: {e}")
 
+    await message.answer(p['thank_you'], reply_markup=types.ReplyKeyboardRemove())
     await state.finish()
+
+# Команда для проверки доступа к таблице и листам
+@dp.message_handler(commands=['debug_sheet'])
+async def debug_sheet(message: types.Message):
+    try:
+        ss = gc.open_by_key(SPREADSHEET_ID)
+        names = [ws.title for ws in ss.worksheets()]
+        await message.answer(f"Worksheets: {names}")
+    except Exception as e:
+        await message.answer(f"Error accessing sheet: {e}")
 
 # «Назад» обработчики
 for st in ('tariff','company','phone','name'):
