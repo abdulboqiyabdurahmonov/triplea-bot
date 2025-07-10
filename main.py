@@ -23,7 +23,7 @@ logging.basicConfig(level=logging.INFO)
 
 # Авторизация в Google Sheets
 scope = [
-    'https://spreadsheets.google.com/feeds',
+    'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive',
 ]
 creds = ServiceAccountCredentials.from_json_keyfile_name(CREDS_FILE, scope)
@@ -35,7 +35,7 @@ def get_sheet():
 bot = Bot(token=API_TOKEN)
 dp  = Dispatcher(bot, storage=MemoryStorage())
 
-# Тексты для каждой локали
+# Локализация текстов
 prompts = {
     'Русский': {
         'invalid_lang':    "Нужно выбрать кнопкой: Русский или Узбекский.",
@@ -43,10 +43,12 @@ prompts = {
         'ask_phone':       "Введите номер телефона:",
         'ask_company':     "Введите название компании:",
         'ask_tariff':      "Выберите тариф:",
-        'invalid_tariff':  "Нужно выбрать один из трёх тарифов кнопками.",
+        'invalid_tariff':  "Нужно выбрать один из тарифов кнопками.",
         'thank_you':       "Спасибо! Ваша заявка отправлена.",
         'sheet_error':     "⚠️ Не удалось сохранить заявку в таблицу, но в группу она отправлена.",
-        'fallback':        "Чтобы начать, введите команду /start"
+        'fallback':        "Чтобы начать, введите команду /start",
+        'back':            "Назад",
+        'tariffs':         ["Старт", "Бизнес", "Корпоратив"]
     },
     'Узбекский': {
         'invalid_lang':    "Iltimos, tugmalardan foydalanib tanlang: Ruscha yoki O'zbekcha.",
@@ -57,7 +59,9 @@ prompts = {
         'invalid_tariff':  "Iltimos, quydagi tariflardan birini tanlang tugmalar orqali.",
         'thank_you':       "Rahmat! Murojaatingiz yuborildi.",
         'sheet_error':     "⚠️ Arizani jadvalga saqlashda muammo yuz berdi, lekin guruhga yuborildi.",
-        'fallback':        "/start buyrug'ini kiriting, iltimos."
+        'fallback':        "/start buyrug'ini kiriting, iltimos.",
+        'back':            "Ortga",
+        'tariffs':         ["Start", "Biznes", "Korporativ"]
     }
 }
 
@@ -105,20 +109,22 @@ async def process_phone(message: types.Message, state: FSMContext):
 async def process_company(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data['lang']
-    await state.update_data(company=message.text.strip())
+    p = prompts[lang]
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    kb.add("Назад")
-    kb.add("Старт", "Бизнес", "Корпоратив")
+    kb.add(p['back'])
+    for t in p['tariffs']:
+        kb.add(t)
     await Form.tariff.set()
-    await message.answer(prompts[lang]['ask_tariff'], reply_markup=kb)
+    await message.answer(p['ask_tariff'], reply_markup=kb)
 
 @dp.message_handler(state=Form.tariff)
 async def process_tariff(message: types.Message, state: FSMContext):
     data = await state.get_data()
     lang = data['lang']
-    valid = ["Старт", "Бизнес", "Корпоратив"]
+    p = prompts[lang]
+    valid = p['tariffs']
     if message.text not in valid:
-        return await message.answer(prompts[lang]['invalid_tariff'])
+        return await message.answer(p['invalid_tariff'])
     await state.update_data(tariff=message.text)
     data = await state.get_data()
 
@@ -140,50 +146,60 @@ async def process_tariff(message: types.Message, state: FSMContext):
             data['phone'],
             data['company'],
             data['tariff']
-        ])
-        await message.answer(prompts[lang]['thank_you'])
+        ], value_input_option="USER_ENTERED")
+        await message.answer(p['thank_you'], reply_markup=types.ReplyKeyboardRemove())
     except Exception as e:
         logging.error(f"Ошибка при записи в Google Sheets: {e}")
-        await message.answer(prompts[lang]['sheet_error'])
+        await message.answer(p['sheet_error'], reply_markup=types.ReplyKeyboardRemove())
 
     await state.finish()
 
 # Обработчики «Назад»
-@dp.message_handler(lambda m: m.text == "Назад", state=Form.tariff)
+@dp.message_handler(lambda m: m.text == prompts['Русский']['back'], state=Form.tariff)
+@dp.message_handler(lambda m: m.text == prompts['Узбекский']['back'], state=Form.tariff)
 async def back_to_company(message: types.Message, state: FSMContext):
     await Form.company.set()
     data = await state.get_data()
+    lang = data['lang']
+    p = prompts[lang]
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    kb.add("Назад").add("Старт", "Бизнес", "Корпоратив")
-    await message.answer(prompts[data['lang']]['ask_company'], reply_markup=kb)
+    kb.add(p['back'])
+    for t in p['tariffs']:
+        kb.add(t)
+    await message.answer(p['ask_company'], reply_markup=kb)
 
-@dp.message_handler(lambda m: m.text == "Назад", state=Form.company)
+@dp.message_handler(lambda m: m.text == prompts['Русский']['back'], state=Form.company)
+@dp.message_handler(lambda m: m.text == prompts['Узбекский']['back'], state=Form.company)
 async def back_to_phone(message: types.Message, state: FSMContext):
     await Form.phone.set()
     data = await state.get_data()
-    await message.answer(prompts[data['lang']]['ask_phone'], reply_markup=types.ReplyKeyboardRemove())
+    lang = data['lang']
+    await message.answer(prompts[lang]['ask_phone'], reply_markup=types.ReplyKeyboardRemove())
 
-@dp.message_handler(lambda m: m.text == "Назад", state=Form.phone)
+@dp.message_handler(lambda m: m.text == prompts['Русский']['back'], state=Form.phone)
+@dp.message_handler(lambda m: m.text == prompts['Узбекский']['back'], state=Form.phone)
 async def back_to_name(message: types.Message, state: FSMContext):
     await Form.name.set()
     data = await state.get_data()
-    await message.answer(prompts[data['lang']]['ask_name'], reply_markup=types.ReplyKeyboardRemove())
+    lang = data['lang']
+    await message.answer(prompts[lang]['ask_name'], reply_markup=types.ReplyKeyboardRemove())
 
-@dp.message_handler(lambda m: m.text == "Назад", state=Form.name)
+@dp.message_handler(lambda m: m.text == prompts['Русский']['back'], state=Form.name)
+@dp.message_handler(lambda m: m.text == prompts['Узбекский']['back'], state=Form.name)
 async def back_to_lang(message: types.Message, state: FSMContext):
     await Form.lang.set()
     kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
     kb.add("Русский", "Узбекский")
     await message.answer("Пожалуйста, выберите язык:", reply_markup=kb)
 
-@dp.message_handler(lambda m: m.text == "Отмена", state='*')
+@dp.message_handler(lambda m: m.text.lower() == "отмена", state='*')
 async def cancel_all(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer("Отменено. /start чтобы начать заново.", reply_markup=types.ReplyKeyboardRemove())
 
 @dp.message_handler(lambda msg: msg.text and not msg.text.startswith('/'), state=None)
 async def fallback(message: types.Message):
-    await message.answer("Чтобы начать, введите команду /start")
+    await message.answer(prompts['Русский']['fallback'])
 
 async def on_startup(dp):
     await bot.delete_webhook(drop_pending_updates=True)
@@ -191,4 +207,3 @@ async def on_startup(dp):
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
-
