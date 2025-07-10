@@ -146,7 +146,7 @@ async def process_tariff(message: types.Message, state: FSMContext):
     await state.update_data(tariff=message.text)
     data = await state.get_data()
 
-    # 1) в группу
+    # 1) отправляем в группу
     summary = (
         f"📥 Новая заявка!\n"
         f"👤 ФИО: {data['name']}\n"
@@ -160,7 +160,7 @@ async def process_tariff(message: types.Message, state: FSMContext):
         logging.error(f"Error sending to group: {e}")
         await message.answer(TEXT[lang]['sheet_error'])
 
-    # 2) в Google Sheets
+    # 2) записываем в Google Sheets
     try:
         sheet = get_sheet()
         sheet.append_row([
@@ -211,11 +211,15 @@ async def cancel_all(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer('Отменено. /start для начала.', reply_markup=types.ReplyKeyboardRemove())
 
-# Fallback только при state=None
+# Fallback only when no state
 @dp.message_handler(state=None)
 async def fallback(message: types.Message):
     await message.answer('Я вас не понял. /start для начала.')
 
+# Удаляем вебхук перед запуском polling
+async def on_startup(dp):
+    await bot.delete_webhook(drop_pending_updates=True)
+
 # Run
 if __name__ == '__main__':
-    start_polling(dp, skip_updates=True)
+    start_polling(dp, skip_updates=True, on_startup=on_startup)
