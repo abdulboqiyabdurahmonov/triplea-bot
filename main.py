@@ -6,7 +6,9 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.types import (
+    InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+)
 from aiogram.dispatcher import FSMContext
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher.filters.state import State, StatesGroup
@@ -51,6 +53,10 @@ TEXT = {
         'ask_name':       'Введите ваше ФИО:',
         'ask_phone':      'Введите номер телефона:',
         'invalid_phone':  'Неверный формат. Введите номер в формате +998XXXXXXXXX.',
+        'ask_region':     'Введите ваш регион проживания:',
+        'invalid_region': 'Нужно ввести название региона.',
+        'ask_email':      'Введите ваш Email или отправьте /skip, чтобы пропустить:',
+        'invalid_email':  'Неверный формат email. Попробуйте ещё раз или /skip.',
         'ask_company':    'Введите название компании:',
         'ask_tariff':     'Выберите тариф:',
         'invalid_tariff': 'Нужно выбрать одним из вариантов кнопками.',
@@ -64,10 +70,14 @@ TEXT = {
         'invalid_lang':   "Iltimos, tugmalardan foydalanib tanlang: Ruscha yoki O'zbekcha.",
         'ask_name':       "Iltimos, FIOingizni kiriting:",
         'ask_phone':      "Iltimos, telefon raqamingizni kiriting:",
-        'invalid_phone':  "Noto‘g‘ri format. Telefon raqamini +998XXXXXXXXX formatda kiriting.",
+        'invalid_phone':  "Noto‘g‘ri format. +998XXXXXXXXX.",
+        'ask_region':     "Iltimos, yashash hududingizni kiriting:",
+        'invalid_region': "Mintaqani kiriting.",
+        'ask_email':      "Iltimos, Emailingizni kiriting yoki /skip yuboring:",
+        'invalid_email':  "Noto‘g‘ri format. Yana urinib ko‘ring yoki /skip.",
         'ask_company':    "Iltimos, kompaniya nomini kiriting:",
         'ask_tariff':     "Iltimos, tarifni tanlang:",
-        'invalid_tariff':'Iltimos, variantlardan birini tanlang tugmalar orqali.',
+        'invalid_tariff':'Tugmalardan birini tanlang.',
         'thank_you':      'Rahmat! Arizangiz yuborildi.',
         'sheet_error':    '⚠️ Ariza guruhga yuborildi, lekin jadvalga yozilmadi.',
         'tariffs':        ['Boshlang‘ich', 'Biznes', 'Korporativ'],
@@ -82,6 +92,10 @@ class Form(StatesGroup):
     name_confirm    = State()
     phone           = State()
     phone_confirm   = State()
+    region          = State()
+    region_confirm  = State()
+    email           = State()
+    email_confirm   = State()
     company         = State()
     company_confirm = State()
     tariff          = State()
@@ -101,14 +115,14 @@ def yes_no_kb():
     )
     return kb
 
-# 1) /start
+# ————— Handlers —————
+
 @dp.message_handler(commands=['start'], state='*')
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.finish()
     await Form.lang.set()
     await message.answer(TEXT['ru']['choose_lang'], reply_markup=build_lang_kb())
 
-# 2) Язык
 @dp.message_handler(state=Form.lang)
 async def process_lang(message: types.Message, state: FSMContext):
     txt = message.text.strip().lower()
@@ -122,18 +136,17 @@ async def process_lang(message: types.Message, state: FSMContext):
     await Form.name.set()
     await message.answer(TEXT[lang]['ask_name'], reply_markup=types.ReplyKeyboardRemove())
 
-# 3) ФИО → подтверждение
 @dp.message_handler(state=Form.name)
 async def process_name(message: types.Message, state: FSMContext):
     name = message.text.strip()
     await state.update_data(name=name)
-    data = await state.get_data(); lang = data['lang']
+    lang = (await state.get_data())['lang']
     await Form.name_confirm.set()
     await message.answer(f"Вы ввели ФИО: {name}\nВерно?", reply_markup=yes_no_kb())
 
 @dp.callback_query_handler(lambda c: c.data in ['yes','no'], state=Form.name_confirm)
 async def confirm_name(call: CallbackQuery, state: FSMContext):
-    data = await state.get_data(); lang = data['lang']
+    lang = (await state.get_data())['lang']
     await call.answer()
     if call.data == 'yes':
         await Form.phone.set()
@@ -142,7 +155,6 @@ async def confirm_name(call: CallbackQuery, state: FSMContext):
         await Form.name.set()
         await call.message.edit_text(TEXT[lang]['ask_name'])
 
-# 4) Телефон → нормализация, валидация → подтверждение
 @dp.message_handler(state=Form.phone)
 async def process_phone(message: types.Message, state: FSMContext):
     raw = message.text.strip()
@@ -154,53 +166,96 @@ async def process_phone(message: types.Message, state: FSMContext):
     elif re.fullmatch(r'\+998\d{9}', raw):
         phone = raw
     else:
-        data = await state.get_data(); lang = data['lang']
+        lang = (await state.get_data())['lang']
         return await message.answer(TEXT[lang]['invalid_phone'])
     await state.update_data(phone=phone)
-    data = await state.get_data(); lang = data['lang']
+    lang = (await state.get_data())['lang']
     await Form.phone_confirm.set()
     await message.answer(f"Вы ввели телефон: {phone}\nВерно?", reply_markup=yes_no_kb())
 
 @dp.callback_query_handler(lambda c: c.data in ['yes','no'], state=Form.phone_confirm)
 async def confirm_phone(call: CallbackQuery, state: FSMContext):
-    data = await state.get_data(); lang = data['lang']
+    lang = (await state.get_data())['lang']
+    await call.answer()
+    if call.data == 'yes':
+        await Form.region.set()
+        await call.message.edit_text(TEXT[lang]['ask_region'])
+    else:
+        await Form.phone.set()
+        await call.message.edit_text(TEXT[lang]['ask_phone'])
+
+@dp.message_handler(state=Form.region)
+async def process_region(message: types.Message, state: FSMContext):
+    reg = message.text.strip()
+    if not reg:
+        lang = (await state.get_data())['lang']
+        return await message.answer(TEXT[lang]['invalid_region'])
+    await state.update_data(region=reg)
+    lang = (await state.get_data())['lang']
+    await Form.region_confirm.set()
+    await message.answer(f"Вы ввели регион: {reg}\nВерно?", reply_markup=yes_no_kb())
+
+@dp.callback_query_handler(lambda c: c.data in ['yes','no'], state=Form.region_confirm)
+async def confirm_region(call: CallbackQuery, state: FSMContext):
+    lang = (await state.get_data())['lang']
+    await call.answer()
+    if call.data == 'yes':
+        await Form.email.set()
+        await call.message.edit_text(TEXT[lang]['ask_email'])
+    else:
+        await Form.region.set()
+        await call.message.edit_text(TEXT[lang]['ask_region'])
+
+@dp.message_handler(state=Form.email)
+async def process_email(message: types.Message, state: FSMContext):
+    raw = message.text.strip()
+    lang = (await state.get_data())['lang']
+    if raw.lower() == '/skip':
+        await state.update_data(email='—')
+    else:
+        if not re.fullmatch(r"[^@]+@[^@]+\.[^@]+", raw):
+            return await message.answer(TEXT[lang]['invalid_email'])
+        await state.update_data(email=raw)
+    await Form.email_confirm.set()
+    val = await state.get_data()
+    await message.answer(f"Email: {val['email']}\nВерно?", reply_markup=yes_no_kb())
+
+@dp.callback_query_handler(lambda c: c.data in ['yes','no'], state=Form.email_confirm)
+async def confirm_email(call: CallbackQuery, state: FSMContext):
+    lang = (await state.get_data())['lang']
     await call.answer()
     if call.data == 'yes':
         await Form.company.set()
         await call.message.edit_text(TEXT[lang]['ask_company'])
     else:
-        await Form.phone.set()
-        await call.message.edit_text(TEXT[lang]['ask_phone'])
+        await Form.email.set()
+        await call.message.edit_text(TEXT[lang]['ask_email'])
 
-# 5) Компания → подтверждение
 @dp.message_handler(state=Form.company)
 async def process_company(message: types.Message, state: FSMContext):
     comp = message.text.strip()
     await state.update_data(company=comp)
-    data = await state.get_data(); lang = data['lang']
+    lang = (await state.get_data())['lang']
     await Form.company_confirm.set()
     await message.answer(f"Вы ввели компанию: {comp}\nВерно?", reply_markup=yes_no_kb())
 
 @dp.callback_query_handler(lambda c: c.data in ['yes','no'], state=Form.company_confirm)
 async def confirm_company(call: CallbackQuery, state: FSMContext):
-    data = await state.get_data(); lang = data['lang']
+    lang = (await state.get_data())['lang']
     await call.answer()
     if call.data == 'yes':
-        # переходим к выбору тарифа
         kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         kb.add(TEXT[lang]['back'], *TEXT[lang]['tariffs'])
         await Form.tariff.set()
-        # Удаляем старое инлайн-сообщение и шлём новое
-        await call.message.delete()
-        await bot.send_message(call.from_user.id, TEXT[lang]['ask_tariff'], reply_markup=kb)
+        await call.message.edit_text(TEXT[lang]['ask_tariff'], reply_markup=kb)
     else:
         await Form.company.set()
         await call.message.edit_text(TEXT[lang]['ask_company'])
 
-# 6) Тариф → подтверждение → финальная отправка
 @dp.message_handler(state=Form.tariff)
 async def process_tariff(message: types.Message, state: FSMContext):
-    data = await state.get_data(); lang = data['lang']
+    data = await state.get_data()
+    lang = data['lang']
     if message.text not in TEXT[lang]['tariffs']:
         return await message.answer(TEXT[lang]['invalid_tariff'])
     await state.update_data(tariff=message.text)
@@ -209,59 +264,51 @@ async def process_tariff(message: types.Message, state: FSMContext):
 
 @dp.callback_query_handler(lambda c: c.data in ['yes','no'], state=Form.tariff_confirm)
 async def confirm_tariff(call: CallbackQuery, state: FSMContext):
-    data = await state.get_data(); lang = data['lang']
+    data = await state.get_data()
+    lang = data['lang']
     await call.answer()
     if call.data == 'yes':
+        # 1) Telegram
         summary = (
             f"📥 Новая заявка!\n"
             f"👤 ФИО: {data['name']}\n"
             f"📞 Тел: {data['phone']}\n"
+            f"📧 Email: {data['email']}\n"
+            f"🌍 Регион: {data['region']}\n"
             f"🏢 Компания: {data['company']}\n"
             f"💼 Тариф: {data['tariff']}"
         )
-        # отправляем в группу
         try:
             await bot.send_message(GROUP_CHAT_ID, summary)
         except Exception as e:
             logging.error(f"Error sending to group: {e}")
             await call.message.answer(TEXT[lang]['sheet_error'])
-        # записываем в Google Sheets
+
+        # 2) Google Sheets (A–G)
         try:
             sheet = get_sheet()
             sheet.append_row([
-                datetime.utcnow().isoformat(),
-                data['name'], data['phone'],
-                data['company'], data['tariff']
+                datetime.utcnow().isoformat(),  # A
+                data['name'],                   # B
+                data['phone'],                  # C
+                data['email'],                  # D
+                data['region'],                 # E
+                data['company'],                # F
+                data['tariff']                  # G
             ], value_input_option='USER_ENTERED')
         except Exception as e:
             logging.error(f"Error writing to sheet: {e}")
             await call.message.answer(TEXT[lang]['sheet_error'])
+
+        # Финал
         await call.message.edit_text(TEXT[lang]['thank_you'], reply_markup=types.ReplyKeyboardRemove())
         await state.finish()
     else:
         kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        lang = (await state.get_data())['lang']
         kb.add(TEXT[lang]['back'], *TEXT[lang]['tariffs'])
         await Form.tariff.set()
-        await call.message.delete()
-        await bot.send_message(call.from_user.id, TEXT[lang]['ask_tariff'], reply_markup=kb)
-
-# ————— резервные обработчики в confirm-состояниях —————
-@dp.message_handler(lambda m: True, state=Form.name_confirm)
-async def fallback_name_confirm(message: types.Message):
-    await message.reply("Пожалуйста, нажмите «Да» или «Нет».", reply_markup=yes_no_kb())
-
-@dp.message_handler(lambda m: True, state=Form.phone_confirm)
-async def fallback_phone_confirm(message: types.Message):
-    await message.reply("Пожалуйста, нажмите «Да» или «Нет».", reply_markup=yes_no_kb())
-
-@dp.message_handler(lambda m: True, state=Form.company_confirm)
-async def fallback_company_confirm(message: types.Message):
-    await message.reply("Пожалуйста, нажмите «Да» или «Нет».", reply_markup=yes_no_kb())
-
-@dp.message_handler(lambda m: True, state=Form.tariff_confirm)
-async def fallback_tariff_confirm(message: types.Message):
-    await message.reply("Пожалуйста, нажмите «Да» или «Нет».", reply_markup=yes_no_kb())
-# ————————————————————————————————————————————————
+        await call.message.edit_text(TEXT[lang]['ask_tariff'], reply_markup=kb)
 
 # Cancel
 @dp.message_handler(lambda m: m.text.lower() == 'отмена', state='*')
@@ -269,7 +316,7 @@ async def cancel_all(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer('Отменено. /start для начала.', reply_markup=types.ReplyKeyboardRemove())
 
-# Fallback only when no state
+# Fallback
 @dp.message_handler(state=None)
 async def fallback(message: types.Message):
     await message.answer('Я вас не понял. /start для начала.')
