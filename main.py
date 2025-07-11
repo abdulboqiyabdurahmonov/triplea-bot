@@ -6,13 +6,11 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import (
-    InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-)
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.dispatcher import FSMContext
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.utils.executor import start_polling
+from aiogram.utils.executor import start_webhook
 from datetime import datetime
 
 # --- Configuration -------------------------------------------
@@ -21,24 +19,28 @@ GROUP_CHAT_ID  = int(os.getenv('GROUP_CHAT_ID', '0'))
 CREDS_FILE     = '/etc/secrets/triplea-bot-250fd4803dd8.json'
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID', '')
 WORKSHEET_NAME = os.getenv('WORKSHEET_NAME', 'Лист1')
+
+# Webhook settings
+WEBHOOK_HOST   = os.getenv('WEBHOOK_HOST')                       # e.g. "https://your.domain.com"
+WEBHOOK_PATH   = os.getenv('WEBHOOK_PATH', f"/webhook/{API_TOKEN}")
+WEBHOOK_URL    = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
+WEBAPP_HOST    = os.getenv('WEBAPP_HOST', '0.0.0.0')
+WEBAPP_PORT    = int(os.getenv('WEBAPP_PORT', 8443))
 # -------------------------------------------------------------
 
-# Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 logging.info(f"Config loaded: GROUP_CHAT_ID={GROUP_CHAT_ID}, SPREADSHEET_ID={SPREADSHEET_ID}")
 
 # Initialize bot & dispatcher
 bot = Bot(token=API_TOKEN)
 dp  = Dispatcher(bot, storage=MemoryStorage())
 
-# Убираем любой вебхук (если был) ДО старта polling
-asyncio.get_event_loop().run_until_complete(
-    bot.delete_webhook(drop_pending_updates=True)
-)
-logging.info("✅ Webhook deleted")
-
 # Google Sheets authorization
-scope = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+scope = [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive'
+]
 creds = ServiceAccountCredentials.from_json_keyfile_name(CREDS_FILE, scope)
 gc    = gspread.authorize(creds)
 
@@ -115,7 +117,7 @@ def yes_no_kb():
     )
     return kb
 
-# ————— Handlers —————
+# ————————— Handlers —————————
 
 @dp.message_handler(commands=['start'], state='*')
 async def cmd_start(message: types.Message, state: FSMContext):
@@ -305,10 +307,18 @@ async def confirm_tariff(call: CallbackQuery, state: FSMContext):
         await state.finish()
     else:
         kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-        lang = (await state.get_data())['lang']
         kb.add(TEXT[lang]['back'], *TEXT[lang]['tariffs'])
         await Form.tariff.set()
         await call.message.edit_text(TEXT[lang]['ask_tariff'], reply_markup=kb)
+
+# ————— Fallback для confirm-стадий —————
+@dp.message_handler(lambda m: True, state=[
+    Form.name_confirm, Form.phone_confirm,
+    Form.region_confirm, Form.email_confirm,
+    Form.company_confirm, Form.tariff_confirm
+])
+async def fallback_confirm(message: types.Message):
+    await message.reply("Пожалуйста, нажмите «Да» или «Нет».", reply_markup=yes_no_kb())
 
 # Cancel
 @dp.message_handler(lambda m: m.text.lower() == 'отмена', state='*')
@@ -316,10 +326,32 @@ async def cancel_all(message: types.Message, state: FSMContext):
     await state.finish()
     await message.answer('Отменено. /start для начала.', reply_markup=types.ReplyKeyboardRemove())
 
-# Fallback
+# Fallback (no state)
 @dp.message_handler(state=None)
 async def fallback(message: types.Message):
     await message.answer('Я вас не понял. /start для начала.')
 
+# ————— Webhook startup/shutdown —————
+async def on_startup(dispatcher):
+    # Удаляем старый webhook
+    await bot.delete_webhook(drop_pending_updates=True)
+    # Устанавливаем новый
+    await bot.set_webhook(WEBHOOK_URL)
+    logging.info(f"🚀 Webhook set to {WEBHOOK_URL}")
+
+async def on_shutdown(dispatcher):
+    logging.info("🌙 Shutting down, deleting webhook")
+    await bot.delete_webhook()
+    await dispatcher.storage.close()
+    await dispatcher.storage.wait_closed()
+
 if __name__ == '__main__':
-    start_polling(dp, skip_updates=True)
+    start_webhook(
+        dispatcher=dp,
+        webhook_path=WEBHOOK_PATH,
+        on_startup=on_startup,
+        on_shutdown=on_shutdown,
+        skip_updates=True,
+        host=WEBAPP_HOST,
+        port=WEBAPP_PORT,
+    )
