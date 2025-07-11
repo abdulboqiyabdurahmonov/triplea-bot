@@ -258,15 +258,20 @@ async def confirm_company(call: CallbackQuery, state: FSMContext):
         await call.message.edit_text(TEXT[lang]['ask_company'])
         await Form.company.set()
 
-@dp.message_handler(state=Form.tariff)
-async def process_tariff(message: types.Message, state: FSMContext):
+@dp.callback_query_handler(lambda c: c.data in ['yes','no'], state=Form.tariff_confirm)
+async def confirm_tariff(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     lang = data['lang']
-    if message.text not in TEXT[lang]['tariffs']:
-        return await message.answer(TEXT[lang]['invalid_tariff'])
-    await state.update_data(tariff=message.text)
-    await Form.tariff_confirm.set()
-    await message.answer(f"Вы выбрали тариф: {message.text}\nВерно?", reply_markup=yes_no_kb())
+    await call.answer()
+    if call.data == 'yes':
+        # ... ваш код отправки в группу и Google Sheets ...
+    else:
+        # удаляем "Верно?" и шлём новый вопрос
+        await call.message.delete()
+        kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        kb.add(TEXT[lang]['back'], *TEXT[lang]['tariffs'])
+        await Form.tariff.set()
+        await bot.send_message(call.from_user.id, TEXT[lang]['ask_tariff'], reply_markup=kb)
 
 @dp.callback_query_handler(lambda c: c.data in ['yes','no'], state=Form.tariff_confirm)
 async def confirm_tariff(call: CallbackQuery, state: FSMContext):
