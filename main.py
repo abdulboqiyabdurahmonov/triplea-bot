@@ -244,28 +244,22 @@ async def confirm_email(call: CallbackQuery, state: FSMContext):
 async def confirm_company(call: CallbackQuery, state: FSMContext):
     lang = (await state.get_data())['lang']
     await call.answer()
+
     if call.data == 'yes':
-        # строим клавиатуру тарифов как обычную ReplyKeyboard
+        # Готовим обычную клавиатуру с тарифами
         kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         kb.add(TEXT[lang]['back'], *TEXT[lang]['tariffs'])
 
-        # переходим в состояние выбора тарифа
-        await Form.tariff.set()
-
-        # удаляем инлайн-сообщение с "Да/Нет"
+        # Удаляем предыдущее сообщение с инлайн-кнопками
         await call.message.delete()
 
-        # отправляем новое сообщение с ReplyKeyboard
-        await bot.send_message(
-            call.from_user.id,
-            TEXT[lang]['ask_tariff'],
-            reply_markup=kb
-        )
+        # Ставим состояние и отправляем новый вопрос с обычной клавиатурой
+        await Form.tariff.set()
+        await bot.send_message(call.from_user.id, TEXT[lang]['ask_tariff'], reply_markup=kb)
     else:
-        # если "Нет" — просто редактируем текст инлайн-сообщения, 
-        # потому что там inline-кнопки ("Да"/"Нет") всё ещё валидны
-        await Form.company.set()
+        # Если «Нет», просто редактируем текст ответа (он был инлайн-сообщением)
         await call.message.edit_text(TEXT[lang]['ask_company'])
+        await Form.company.set()
 
 @dp.message_handler(state=Form.tariff)
 async def process_tariff(message: types.Message, state: FSMContext):
