@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import logging
 import asyncio
 import gspread
@@ -16,7 +17,6 @@ from datetime import datetime
 # --- Configuration -------------------------------------------
 API_TOKEN      = os.getenv('BOT_TOKEN')
 GROUP_CHAT_ID  = int(os.getenv('GROUP_CHAT_ID', '0'))
-CREDS_FILE     = '/etc/secrets/triplea-bot-250fd4803dd8.json'
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID', '')
 WORKSHEET_NAME = os.getenv('WORKSHEET_NAME', 'Лист1')
 
@@ -36,13 +36,14 @@ logging.info(f"Config loaded: GROUP_CHAT_ID={GROUP_CHAT_ID}, SPREADSHEET_ID={SPR
 bot = Bot(token=API_TOKEN)
 dp  = Dispatcher(bot, storage=MemoryStorage())
 
-# Google Sheets authorization
+# Google Sheets authorization via JSON credentials stored in ENV
 scope = [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive'
 ]
-creds = ServiceAccountCredentials.from_json_keyfile_name(CREDS_FILE, scope)
-gc    = gspread.authorize(creds)
+creds_dict = json.loads(os.getenv('GOOGLE_CREDS_JSON'))
+creds      = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+gc         = gspread.authorize(creds)
 
 def get_sheet():
     return gc.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME)
@@ -140,11 +141,10 @@ async def process_lang(message: types.Message, state: FSMContext):
 
 @dp.message_handler(state=Form.name)
 async def process_name(message: types.Message, state: FSMContext):
-    name = message.text.strip()
-    await state.update_data(name=name)
+    await state.update_data(name=message.text.strip())
     lang = (await state.get_data())['lang']
     await Form.name_confirm.set()
-    await message.answer(f"Вы ввели ФИО: {name}\nВерно?", reply_markup=yes_no_kb())
+    await message.answer(f"Вы ввели ФИО: {message.text}\nВерно?", reply_markup=yes_no_kb())
 
 @dp.callback_query_handler(lambda c: c.data in ['yes','no'], state=Form.name_confirm)
 async def confirm_name(call: CallbackQuery, state: FSMContext):
@@ -189,11 +189,10 @@ async def confirm_phone(call: CallbackQuery, state: FSMContext):
 @dp.message_handler(state=Form.region)
 async def process_region(message: types.Message, state: FSMContext):
     reg = message.text.strip()
+    lang = (await state.get_data())['lang']
     if not reg:
-        lang = (await state.get_data())['lang']
         return await message.answer(TEXT[lang]['invalid_region'])
     await state.update_data(region=reg)
-    lang = (await state.get_data())['lang']
     await Form.region_confirm.set()
     await message.answer(f"Вы ввели регион: {reg}\nВерно?", reply_markup=yes_no_kb())
 
@@ -235,11 +234,10 @@ async def confirm_email(call: CallbackQuery, state: FSMContext):
 
 @dp.message_handler(state=Form.company)
 async def process_company(message: types.Message, state: FSMContext):
-    comp = message.text.strip()
-    await state.update_data(company=comp)
+    await state.update_data(company=message.text.strip())
     lang = (await state.get_data())['lang']
     await Form.company_confirm.set()
-    await message.answer(f"Вы ввели компанию: {comp}\nВерно?", reply_markup=yes_no_kb())
+    await message.answer(f"Вы ввели компанию: {message.text}\nВерно?", reply_markup=yes_no_kb())
 
 @dp.callback_query_handler(lambda c: c.data in ['yes','no'], state=Form.company_confirm)
 async def confirm_company(call: CallbackQuery, state: FSMContext):
@@ -270,7 +268,7 @@ async def confirm_tariff(call: CallbackQuery, state: FSMContext):
     lang = data['lang']
     await call.answer()
     if call.data == 'yes':
-        # 1) Telegram
+        # Send to Telegram group
         summary = (
             f"📥 Новая заявка!\n"
             f"👤 ФИО: {data['name']}\n"
@@ -285,8 +283,7 @@ async def confirm_tariff(call: CallbackQuery, state: FSMContext):
         except Exception as e:
             logging.error(f"Error sending to group: {e}")
             await call.message.answer(TEXT[lang]['sheet_error'])
-
-        # 2) Google Sheets (A–G)
+        # Append to Google Sheet A–G
         try:
             sheet = get_sheet()
             sheet.append_row([
@@ -301,8 +298,7 @@ async def confirm_tariff(call: CallbackQuery, state: FSMContext):
         except Exception as e:
             logging.error(f"Error writing to sheet: {e}")
             await call.message.answer(TEXT[lang]['sheet_error'])
-
-        # Финал
+        # Final
         await call.message.edit_text(TEXT[lang]['thank_you'], reply_markup=types.ReplyKeyboardRemove())
         await state.finish()
     else:
@@ -311,7 +307,7 @@ async def confirm_tariff(call: CallbackQuery, state: FSMContext):
         await Form.tariff.set()
         await call.message.edit_text(TEXT[lang]['ask_tariff'], reply_markup=kb)
 
-# ————— Fallback для confirm-стадий —————
+# Fallback for all confirm states
 @dp.message_handler(lambda m: True, state=[
     Form.name_confirm, Form.phone_confirm,
     Form.region_confirm, Form.email_confirm,
@@ -331,11 +327,9 @@ async def cancel_all(message: types.Message, state: FSMContext):
 async def fallback(message: types.Message):
     await message.answer('Я вас не понял. /start для начала.')
 
-# ————— Webhook startup/shutdown —————
+# Webhook setup / teardown
 async def on_startup(dispatcher):
-    # Удаляем старый webhook
     await bot.delete_webhook(drop_pending_updates=True)
-    # Устанавливаем новый
     await bot.set_webhook(WEBHOOK_URL)
     logging.info(f"🚀 Webhook set to {WEBHOOK_URL}")
 
