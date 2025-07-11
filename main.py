@@ -1,9 +1,10 @@
 import os
-import re
 import json
+import re
 import logging
 import asyncio
 import gspread
+# … остальные импорты …
 from oauth2client.service_account import ServiceAccountCredentials
 
 from aiogram import Bot, Dispatcher, types
@@ -36,14 +37,21 @@ logging.info(f"Config loaded: GROUP_CHAT_ID={GROUP_CHAT_ID}, SPREADSHEET_ID={SPR
 bot = Bot(token=API_TOKEN)
 dp  = Dispatcher(bot, storage=MemoryStorage())
 
-# Google Sheets authorization via JSON credentials stored in ENV
+# Google Sheets authorization
 scope = [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive'
 ]
-creds_dict = json.loads(os.getenv('GOOGLE_CREDS_JSON'))
-creds      = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-gc         = gspread.authorize(creds)
+
+# вместо чтения файла — читаем строку из GOOGLE_CREDS_JSON
+creds_json = os.getenv('GOOGLE_CREDS_JSON')
+if not creds_json:
+    logging.error("GOOGLE_CREDS_JSON is not set!")
+    exit(1)
+
+creds_dict = json.loads(creds_json)
+creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+gc    = gspread.authorize(creds)
 
 def get_sheet():
     return gc.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME)
