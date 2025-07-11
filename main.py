@@ -244,20 +244,17 @@ async def confirm_email(call: CallbackQuery, state: FSMContext):
 async def confirm_company(call: CallbackQuery, state: FSMContext):
     lang = (await state.get_data())['lang']
     await call.answer()
-
     if call.data == 'yes':
-        # Готовим обычную клавиатуру с тарифами
+        # удаляем предыдущее инлайн-сообщение
+        await call.message.delete()
+        # собираем Reply-клавиатуру для тарифа
         kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         kb.add(TEXT[lang]['back'], *TEXT[lang]['tariffs'])
-
-        # Удаляем предыдущее сообщение с инлайн-кнопками
-        await call.message.delete()
-
-        # Ставим состояние и отправляем новый вопрос с обычной клавиатурой
+        # переходим в состояние и шлём чистый вопрос
         await Form.tariff.set()
         await bot.send_message(call.from_user.id, TEXT[lang]['ask_tariff'], reply_markup=kb)
     else:
-        # Если «Нет», просто редактируем текст ответа (он был инлайн-сообщением)
+        # просто редактируем текст "Верно?" на повторный запрос компании
         await call.message.edit_text(TEXT[lang]['ask_company'])
         await Form.company.set()
 
