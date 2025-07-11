@@ -280,7 +280,7 @@ async def confirm_tariff(call: CallbackQuery, state: FSMContext):
     await call.answer()
 
     if call.data == 'yes':
-        # 1) Отправляем заявку в Telegram-группу
+        # ─── 1) Отправка в Telegram ────────────────────────────────────────
         summary = (
             f"📥 Новая заявка!\n"
             f"👤 ФИО: {data['name']}\n"
@@ -296,7 +296,7 @@ async def confirm_tariff(call: CallbackQuery, state: FSMContext):
             logging.error(f"Error sending to group: {e}")
             await call.message.answer(TEXT[lang]['sheet_error'])
 
-        # 2) Записываем в Google Sheets
+        # ─── 2) Запись в Google Sheets ───────────────────────────────────
         try:
             sheet = get_sheet()
             sheet.append_row([
@@ -312,7 +312,7 @@ async def confirm_tariff(call: CallbackQuery, state: FSMContext):
             logging.error(f"Error writing to sheet: {e}")
             await call.message.answer(TEXT[lang]['sheet_error'])
 
-        # Финальный ответ пользователю
+        # ─── 3) Финальный ответ ──────────────────────────────────────────
         await call.message.edit_text(
             TEXT[lang]['thank_you'],
             reply_markup=types.ReplyKeyboardRemove()
@@ -320,7 +320,7 @@ async def confirm_tariff(call: CallbackQuery, state: FSMContext):
         await state.finish()
 
     else:
-        # Удаляем "Верно?" и шлём заново вопрос о тарифе с Reply-клавиатурой
+        # Если пользователь нажал «Нет», спросим тариф заново
         await call.message.delete()
         kb = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
         kb.add(TEXT[lang]['back'], *TEXT[lang]['tariffs'])
