@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 from datetime import datetime
 
@@ -30,9 +31,20 @@ storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
 # --- Google Sheets setup -------------------------------------
-SERVICE_ACCOUNT_FILE = os.getenv('GOOGLE_APPLICATION_CREDENTIALS', 'credentials.json')
-SCOPE = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-credentials = ServiceAccountCredentials.from_json_keyfile_name(SERVICE_ACCOUNT_FILE, SCOPE)
+# Use JSON credentials from environment to avoid missing file
+SERVICE_CREDENTIALS_JSON = os.getenv('GOOGLE_CREDENTIALS_JSON')
+if SERVICE_CREDENTIALS_JSON:
+    creds_dict = json.loads(SERVICE_CREDENTIALS_JSON)
+    credentials = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, [
+        'https://spreadsheets.google.com/feeds',
+        'https://www.googleapis.com/auth/drive'
+    ])
+else:
+    SERVICE_ACCOUNT_FILE = os.getenv('GOOGLE_APPLICATION_CREDENTIALS', 'credentials.json')
+    credentials = ServiceAccountCredentials.from_json_keyfile_name(SERVICE_ACCOUNT_FILE, [
+        'https://spreadsheets.google.com/feeds',
+        'https://www.googleapis.com/auth/drive'
+    ])
 gc = gspread.authorize(credentials)
 sheet = gc.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME)
 
