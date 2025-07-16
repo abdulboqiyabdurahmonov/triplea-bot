@@ -80,20 +80,30 @@ async def process_lang(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
     lang = callback.data.split('_')[1]
     await state.update_data(lang=lang)
-    await bot.send_message(callback.from_user.id, f"Вы выбрали язык: {lang}")
-    await bot.send_message(callback.from_user.id, "Введите ваше ФИО:")
+    if lang == 'ru':
+        await bot.send_message(callback.from_user.id, "Введите ваше ФИО:")
+    else:
+        await bot.send_message(callback.from_user.id, "Iltimos, to‘liq ismingizni yozing:")
     await Form.name.set()
 
 @dp.message_handler(state=Form.name)
 async def process_name(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
-    await message.answer("Введите ваш номер телефона:")
+    data = await state.get_data()
+    if data.get('lang') == 'ru':
+        await message.answer("Введите ваш номер телефона:")
+    else:
+        await message.answer("Telefon raqamingizni kiriting:")
     await Form.phone.set()
 
 @dp.message_handler(state=Form.phone)
 async def process_phone(message: types.Message, state: FSMContext):
     await state.update_data(phone=message.text)
-    await message.answer("Введите название вашей компании:")
+    data = await state.get_data()
+    if data.get('lang') == 'ru':
+        await message.answer("Введите название вашей компании:")
+    else:
+        await message.answer("Kompaniyangiz nomini yozing:")
     await Form.company.set()
 
 @dp.message_handler(state=Form.company)
@@ -105,7 +115,11 @@ async def process_company(message: types.Message, state: FSMContext):
         InlineKeyboardButton("Бизнес", callback_data="tariff_business"),
         InlineKeyboardButton("Корпоративный", callback_data="tariff_corp")
     )
-    await message.answer("Выберите тариф:", reply_markup=keyboard)
+    data = await state.get_data()
+    if data.get('lang') == 'ru':
+        await message.answer("Выберите тариф:", reply_markup=keyboard)
+    else:
+        await message.answer("Tarifni tanlang:\n- Start (750 so‘m/qo‘ng‘iroq)\n- Biznes (600 so‘m/qo‘ng‘iroq)\n- Korporativ (450 so‘m/qo‘ng‘iroq)", reply_markup=keyboard)
     await Form.tariff.set()
 
 @dp.callback_query_handler(lambda c: c.data and c.data.startswith('tariff_'), state=Form.tariff)
@@ -135,7 +149,13 @@ async def process_tariff(callback: types.CallbackQuery, state: FSMContext):
     keyboard = InlineKeyboardMarkup().add(
         InlineKeyboardButton("💬 Написать менеджеру", url="https://t.me/+998946772399")
     )
-    await bot.send_message(callback.from_user.id, "✅ Спасибо! Ваша заявка принята.\n\nМенеджер свяжется с вами в ближайшее время.", reply_markup=keyboard)
+
+    if lang == 'ru':
+        thank_you = "✅ Спасибо! Ваша заявка принята.\n\nМенеджер свяжется с вами в ближайшее время."
+    else:
+        thank_you = "✅ Rahmat! So‘rovingiz qabul qilindi.\n\nMenejerimiz siz bilan tez orada bog‘lanadi."
+
+    await bot.send_message(callback.from_user.id, thank_you, reply_markup=keyboard)
     await state.finish()
 
 # --- Webhook setup -------------------------------------------
