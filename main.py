@@ -19,7 +19,7 @@ GROUP_CHAT_ID = int(os.getenv('GROUP_CHAT_ID', '0'))
 SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
 WORKSHEET_NAME = os.getenv('WORKSHEET_NAME', 'Лист1')
 
-WEBHOOK_HOST = os.getenv('WEBHOOK_HOST')      # e.g. "https://your.domain.com"
+WEBHOOK_HOST = os.getenv('WEBHOOK_HOST')
 WEBHOOK_PATH = f"/webhook/{API_TOKEN}"
 WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
 WEBAPP_HOST = '0.0.0.0'
@@ -31,7 +31,6 @@ storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
 # --- Google Sheets setup -------------------------------------
-# Use JSON credentials from environment to avoid missing file
 SERVICE_CREDENTIALS_JSON = os.getenv('GOOGLE_CREDENTIALS_JSON')
 if SERVICE_CREDENTIALS_JSON:
     creds_dict = json.loads(SERVICE_CREDENTIALS_JSON)
@@ -64,7 +63,16 @@ async def cmd_start(message: types.Message):
         InlineKeyboardButton("Русский", callback_data="lang_ru"),
         InlineKeyboardButton("English", callback_data="lang_en")
     )
-    await message.answer("Пожалуйста, выберите язык / Please choose language:", reply_markup=keyboard)
+    await message.answer(
+        "👋 Привет! Я голосовой помощник TRIPLEA.\n\n"
+        "Помогаю бизнесу:\n"
+        "— продавать через автообзвоны,\n"
+        "— взыскивать задолженность,\n"
+        "— собирать аналитику и формировать отчёты.\n\n"
+        "Хочешь протестировать на своей базе?\n"
+        "👇 Выбери язык, чтобы продолжить:",
+        reply_markup=keyboard
+    )
     await Form.lang.set()
 
 @dp.callback_query_handler(lambda c: c.data and c.data.startswith('lang_'), state=Form.lang)
@@ -72,7 +80,6 @@ async def process_lang(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
     lang = callback.data.split('_')[1]
     await state.update_data(lang=lang)
-    await bot.send_message(callback.from_user.id, f"Вы выбрали язык: {lang}")
     await bot.send_message(callback.from_user.id, "Введите ваше ФИО:")
     await Form.name.set()
 
@@ -110,9 +117,8 @@ async def process_tariff(callback: types.CallbackQuery, state: FSMContext):
     company = data.get('company')
     lang = data.get('lang')
 
-    # Send to Telegram group
     text = (
-        f"📥 Новый запрос из бота ({lang})\n"
+        f"📬 Новый запрос из бота ({lang})\n"
         f"👤 ФИО: {name}\n"
         f"📞 Телефон: {phone}\n"
         f"🏢 Компания: {company}\n"
@@ -120,13 +126,14 @@ async def process_tariff(callback: types.CallbackQuery, state: FSMContext):
     )
     await bot.send_message(GROUP_CHAT_ID, text)
 
-    # Write to Google Sheets
     try:
         sheet.append_row([name, phone, company, tariff, datetime.utcnow().isoformat()])
     except Exception as e:
         logging.error(f"Ошибка при записи в Google Sheets: {e}")
 
-    await bot.send_message(callback.from_user.id, "Спасибо! Ваша заявка отправлена.")
+    keyboard = InlineKeyboardMarkup()
+    keyboard.add(InlineKeyboardButton("💬 Написать менеджеру", url="https://t.me/aaa_call_bot"))
+    await bot.send_message(callback.from_user.id, "✅ Спасибо! Ваша заявка отправлена.\nМенеджер скоро свяжется с вами.", reply_markup=keyboard)
     await state.finish()
 
 # --- Webhook setup -------------------------------------------
