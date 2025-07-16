@@ -61,7 +61,7 @@ async def cmd_start(message: types.Message):
     keyboard = InlineKeyboardMarkup(row_width=2)
     keyboard.add(
         InlineKeyboardButton("Русский", callback_data="lang_ru"),
-        InlineKeyboardButton("English", callback_data="lang_en")
+        InlineKeyboardButton("O'zbekcha", callback_data="lang_uz")
     )
     await message.answer(
         "👋 Привет! Я голосовой помощник TRIPLEA.\n\n"
@@ -80,6 +80,7 @@ async def process_lang(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
     lang = callback.data.split('_')[1]
     await state.update_data(lang=lang)
+    await bot.send_message(callback.from_user.id, f"Вы выбрали язык: {lang}")
     await bot.send_message(callback.from_user.id, "Введите ваше ФИО:")
     await Form.name.set()
 
@@ -118,7 +119,7 @@ async def process_tariff(callback: types.CallbackQuery, state: FSMContext):
     lang = data.get('lang')
 
     text = (
-        f"📬 Новый запрос из бота ({lang})\n"
+        f"📥 Новый запрос из бота ({lang})\n"
         f"👤 ФИО: {name}\n"
         f"📞 Телефон: {phone}\n"
         f"🏢 Компания: {company}\n"
@@ -131,9 +132,10 @@ async def process_tariff(callback: types.CallbackQuery, state: FSMContext):
     except Exception as e:
         logging.error(f"Ошибка при записи в Google Sheets: {e}")
 
-    keyboard = InlineKeyboardMarkup()
-    keyboard.add(InlineKeyboardButton("💬 Написать менеджеру", url="https://t.me/aaa_call_bot"))
-    await bot.send_message(callback.from_user.id, "✅ Спасибо! Ваша заявка отправлена.\nМенеджер скоро свяжется с вами.", reply_markup=keyboard)
+    keyboard = InlineKeyboardMarkup().add(
+        InlineKeyboardButton("💬 Написать менеджеру", url="https://t.me/+998946772399")
+    )
+    await bot.send_message(callback.from_user.id, "✅ Спасибо! Ваша заявка принята.\n\nМенеджер свяжется с вами в ближайшее время.", reply_markup=keyboard)
     await state.finish()
 
 # --- Webhook setup -------------------------------------------
